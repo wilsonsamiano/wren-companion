@@ -32,14 +32,17 @@ popover contents {
   padding: 12px;
   border-radius: 12px;
 }
-box.wren-chat {
+box.wren-chat, box.wren-perm {
   background-color: #1a1a1a;
   color: #ffffff;
   min-width: 280px;
-  min-height: 240px;
 }
-label, box.wren-chat label, box.wren-perm label {
-  color: #ffffff;
+box.wren-btn {
+  background-color: #2c2c2c;
+  background-image: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  min-height: 32px;
 }
 label.wren-title {
   font-size: 15px;
@@ -52,32 +55,39 @@ label.wren-sub {
 }
 label.wren-msg-user, label.wren-msg-wren {
   color: #ffffff;
-  background-color: transparent;
   font-size: 14px;
   font-weight: 500;
 }
-box.wren-perm {
-  background-color: #1a1a1a;
-  padding: 8px;
-}
 entry {
+  background-image: none;
   background-color: #111111;
   color: #ffffff;
   min-height: 36px;
   padding: 6px 10px;
   border-radius: 8px;
 }
+entry placeholder {
+  color: #bbbbbb;
+}
 button {
-  background-color: #333333;
+  background-image: none;
+  background-color: #2c2c2c;
   color: #ffffff;
+  box-shadow: none;
+  text-shadow: none;
+  border: none;
   border-radius: 8px;
   min-height: 32px;
   padding: 4px 10px;
 }
-button.wren-yes {
-  background-color: #444444;
+button:hover, button:active, button:checked {
+  background-image: none;
+  background-color: #3a3a3a;
   color: #ffffff;
-  font-weight: 600;
+}
+button label {
+  color: #ffffff;
+  background-color: transparent;
 }
 """
 
@@ -271,8 +281,7 @@ def launch(cfg: WrenConfig) -> None:
             titles.append(name)
             titles.append(sub)
             titles.set_hexpand(True)
-            close = Gtk.Button(label="✕")
-            close.connect("clicked", lambda *_: self.close_chat())
+            close = self._btn(Gtk, "✕", self.close_chat)
             header.append(titles)
             header.append(close)
             chat.append(header)
@@ -294,26 +303,36 @@ def launch(cfg: WrenConfig) -> None:
                 "Help with the terminal error",
                 "Set up Ollama for this machine",
             ):
-                btn = Gtk.Button(label=hint)
-                btn.set_halign(Gtk.Align.FILL)
-                btn.connect("clicked", lambda _b, h=hint: self.send_text(h))
-                self._hints.append(btn)
+                chip = self._btn(Gtk, hint, lambda h=hint: self.send_text(h))
+                self._hints.append(chip)
             self.msg_box.append(self._hints)
 
             row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-            look = Gtk.Button(label="Look")
-            look.connect("clicked", lambda *_: self.ask_user())
+            look = self._btn(Gtk, "Look", self.ask_user)
             self.entry = Gtk.Entry()
             self.entry.set_placeholder_text("Ask Wren…")
             self.entry.set_hexpand(True)
             self.entry.connect("activate", lambda *_: self.send_text())
-            send = Gtk.Button(label="Send")
-            send.connect("clicked", lambda *_: self.send_text())
+            send = self._btn(Gtk, "Send", self.send_text)
             row.append(look)
             row.append(self.entry)
             row.append(send)
             chat.append(row)
             return chat
+
+        def _btn(self, Gtk, text, on_click):
+            box = Gtk.Box()
+            box.add_css_class("wren-btn")
+            box.set_halign(Gtk.Align.FILL)
+            lab = Gtk.Label()
+            lab.set_halign(Gtk.Align.CENTER)
+            lab.set_hexpand(True)
+            self._set_text(lab, text)
+            box.append(lab)
+            click = Gtk.GestureClick()
+            click.connect("released", lambda *_: on_click())
+            box.add_controller(click)
+            return box
 
         def _build_perm(self, Gtk):
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -326,13 +345,10 @@ def launch(cfg: WrenConfig) -> None:
             box.append(self.perm_title)
             box.append(self.perm_detail)
             row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            yes = Gtk.Button(label="Yes")
-            yes.add_css_class("wren-yes")
+            yes = self._btn(Gtk, "Yes", lambda: self._answer_perm(True))
             yes.set_hexpand(True)
-            no = Gtk.Button(label="No")
+            no = self._btn(Gtk, "No", lambda: self._answer_perm(False))
             no.set_hexpand(True)
-            yes.connect("clicked", lambda *_: self._answer_perm(True))
-            no.connect("clicked", lambda *_: self._answer_perm(False))
             row.append(yes)
             row.append(no)
             box.append(row)
@@ -653,9 +669,8 @@ def launch(cfg: WrenConfig) -> None:
                 ("Quit Wren", lambda: self.get_application().quit()),
             ]
             for label, cb in items:
-                btn = Gtk.Button(label=label)
-                btn.connect("clicked", lambda _b, fn=cb: (fn(), pop.popdown()))
-                box.append(btn)
+                chip = self._btn(Gtk, label, lambda fn=cb: (fn(), pop.popdown()))
+                box.append(chip)
             pop.set_child(box)
             pop.set_parent(self)
             pop.popup()
