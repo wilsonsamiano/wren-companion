@@ -48,17 +48,98 @@ window.wren-window windowcontrols,
   background-color: transparent;
   background-image: none;
 }
-.wren-bubble {
-  background-color: rgba(28, 22, 18, 0.92);
-  color: #f6eee4;
-  padding: 8px 10px;
+box.wren-bubble {
+  background-color: #1e2128;
+  color: #ece8e1;
+  padding: 10px 14px;
   border-radius: 12px;
-  font-size: 12px;
+  border: 1px solid rgba(255,255,255,0.10);
+  min-width: 200px;
+  max-width: 260px;
+}
+box.wren-bubble label {
+  color: #ece8e1;
+  background-color: transparent;
+  font-size: 13px;
   font-weight: 500;
 }
-.wren-bubble label, label.wren-bubble {
-  color: #f6eee4;
+box.wren-chat {
+  background-color: #1e2128;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.10);
+  padding: 8px;
+  min-width: 280px;
+  min-height: 240px;
+}
+box.wren-chat label {
+  color: #ece8e1;
   background-color: transparent;
+}
+label.wren-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #ece8e1;
+}
+label.wren-sub {
+  font-size: 11px;
+  color: #9a958c;
+}
+label.wren-msg-user {
+  background-color: #c5cdd8;
+  color: #111214;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+label.wren-msg-wren {
+  background-color: #111214;
+  color: #ece8e1;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+label.wren-hint {
+  background-color: #111214;
+  color: #9a958c;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+box.wren-perm {
+  background-color: #1e2128;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.10);
+  padding: 10px 12px;
+  min-width: 240px;
+}
+box.wren-perm label {
+  color: #ece8e1;
+  background-color: transparent;
+}
+.wren-chat entry {
+  background-color: #111214;
+  color: #ece8e1;
+  border-radius: 8px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.wren-chat button, .wren-perm button {
+  background-color: #262a33;
+  color: #ece8e1;
+  border-radius: 8px;
+  min-height: 32px;
+  padding: 4px 10px;
+}
+label.wren-tail {
+  color: #1e2128;
+  font-size: 13px;
+  margin-top: -2px;
+  background-color: transparent;
+}
+button.wren-yes {
+  background-color: #c5cdd8;
+  color: #111214;
 }
 """
 
@@ -120,6 +201,9 @@ def launch(cfg: WrenConfig) -> None:
             self._src_pix = None
             self._layer = False
             self._drag_origin = (cfg.margin_right, cfg.margin_bottom)
+            self._pending = None
+            self._pending_after = None
+            self._messages: list[tuple[str, str]] = []
 
             css = Gtk.CssProvider()
             css.load_from_data(CSS)
@@ -129,31 +213,47 @@ def launch(cfg: WrenConfig) -> None:
                 Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 10,
             )
 
-            root = Gtk.Overlay()
+            root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
             root.add_css_class("wren-root")
+            root.set_halign(Gtk.Align.CENTER)
             handle = Gtk.WindowHandle()
             handle.set_child(root)
             self.set_child(handle)
+
+            self.chat = self._build_chat(Gtk)
+            self.chat.set_visible(False)
+            root.append(self.chat)
+
+            self.perm_box = self._build_perm(Gtk)
+            self.perm_box.set_visible(False)
+            root.append(self.perm_box)
+
+            self.speech = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+            self.speech.set_halign(Gtk.Align.CENTER)
+            self.bubble_wrap = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            self.bubble_wrap.add_css_class("wren-bubble")
+            self.bubble = Gtk.Label(
+                label="",
+                wrap=True,
+                justify=Gtk.Justification.LEFT,
+                xalign=0,
+                max_width_chars=28,
+            )
+            self.bubble_wrap.append(self.bubble)
+            self.speech.append(self.bubble_wrap)
+            tail = Gtk.Label(label="▼")
+            tail.add_css_class("wren-tail")
+            tail.set_halign(Gtk.Align.CENTER)
+            self.speech.append(tail)
+            self.speech.set_visible(False)
+            root.append(self.speech)
 
             self.picture = Gtk.Picture()
             self.picture.set_can_shrink(False)
             self.picture.set_keep_aspect_ratio(True)
             self.picture.set_halign(Gtk.Align.CENTER)
-            self.picture.set_valign(Gtk.Align.CENTER)
-            root.set_child(self.picture)
-
-            self.bubble = Gtk.Label(
-                label="",
-                wrap=True,
-                justify=Gtk.Justification.CENTER,
-                max_width_chars=18,
-            )
-            self.bubble.add_css_class("wren-bubble")
-            self.bubble.set_halign(Gtk.Align.CENTER)
-            self.bubble.set_valign(Gtk.Align.START)
-            self.bubble.set_margin_top(4)
-            self.bubble.set_visible(False)
-            root.add_overlay(self.bubble)
+            self.picture.set_valign(Gtk.Align.END)
+            root.append(self.picture)
 
             self._pose = "idle"
             self._frame_i = 0
@@ -216,9 +316,6 @@ def launch(cfg: WrenConfig) -> None:
             scroll.connect("scroll", self.on_scroll)
             self.add_controller(scroll)
 
-            self.connect("notify::default-width", self.on_win_size)
-            self.connect("notify::default-height", self.on_win_size)
-
             if cfg.permissions.watch:
                 GLib.timeout_add_seconds(max(16, int(cfg.watch_seconds)), self.on_watch)
 
@@ -227,6 +324,83 @@ def launch(cfg: WrenConfig) -> None:
 
             GLib.timeout_add(200, self.boot_brain)
             GLib.timeout_add(700, self._first_pin)
+
+        def _build_chat(self, Gtk):
+            chat = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            chat.add_css_class("wren-chat")
+            chat.set_size_request(280, 260)
+
+            header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+            name = Gtk.Label(label="Wren", xalign=0)
+            name.add_css_class("wren-title")
+            sub = Gtk.Label(label="Ask, or let her watch", xalign=0)
+            sub.add_css_class("wren-sub")
+            titles.append(name)
+            titles.append(sub)
+            titles.set_hexpand(True)
+            close = Gtk.Button(label="✕")
+            close.connect("clicked", lambda *_: self.close_chat())
+            header.append(titles)
+            header.append(close)
+            chat.append(header)
+
+            self.msg_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            scroll = Gtk.ScrolledWindow()
+            scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+            scroll.set_min_content_height(140)
+            scroll.set_vexpand(True)
+            scroll.set_child(self.msg_box)
+            chat.append(scroll)
+            self._hints = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            for hint in (
+                "What am I doing?",
+                "Help with the terminal error",
+                "Set up Ollama for this machine",
+            ):
+                btn = Gtk.Button(label=hint)
+                btn.set_halign(Gtk.Align.FILL)
+                btn.connect("clicked", lambda _b, h=hint: self.send_text(h))
+                self._hints.append(btn)
+            self.msg_box.append(self._hints)
+
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            look = Gtk.Button(label="Look")
+            look.connect("clicked", lambda *_: self.ask_user())
+            self.entry = Gtk.Entry()
+            self.entry.set_placeholder_text("Ask Wren…")
+            self.entry.set_hexpand(True)
+            self.entry.connect("activate", lambda *_: self.send_text())
+            send = Gtk.Button(label="Send")
+            send.connect("clicked", lambda *_: self.send_text())
+            row.append(look)
+            row.append(self.entry)
+            row.append(send)
+            chat.append(row)
+            return chat
+
+        def _build_perm(self, Gtk):
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            box.add_css_class("wren-perm")
+            box.set_halign(Gtk.Align.CENTER)
+            self.perm_title = Gtk.Label(label="", wrap=True, xalign=0)
+            self.perm_title.add_css_class("wren-title")
+            self.perm_detail = Gtk.Label(label="", wrap=True, xalign=0, max_width_chars=32)
+            self.perm_detail.add_css_class("wren-sub")
+            box.append(self.perm_title)
+            box.append(self.perm_detail)
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            yes = Gtk.Button(label="Yes")
+            yes.add_css_class("wren-yes")
+            yes.set_hexpand(True)
+            no = Gtk.Button(label="No")
+            no.set_hexpand(True)
+            yes.connect("clicked", lambda *_: self._answer_perm(True))
+            no.connect("clicked", lambda *_: self._answer_perm(False))
+            row.append(yes)
+            row.append(no)
+            box.append(row)
+            return box
 
         def set_pose(self, pose: str) -> None:
             if pose not in self._poses:
@@ -291,7 +465,16 @@ def launch(cfg: WrenConfig) -> None:
             cfg.pet_size = size
             self.picture.set_size_request(size, size)
             self._show_frame()
-            self.set_default_size(size, size)
+            chat_on = self.chat.get_visible()
+            extra = 0
+            if chat_on:
+                extra += 280
+            if self.speech.get_visible():
+                extra += 96
+            if self.perm_box.get_visible():
+                extra += 120
+            width = 300 if chat_on else max(size, 240 if extra else size)
+            self.set_default_size(width, size + extra)
             self._applying = False
 
         def bump_size(self, delta: int) -> None:
@@ -313,33 +496,48 @@ def launch(cfg: WrenConfig) -> None:
             self.bump_size(-16 if dy > 0 else 16)
             return True
 
-        def on_win_size(self, *_args) -> None:
-            if self._applying:
-                return
-            w, h = self.get_width(), self.get_height()
-            if w < 40 or h < 40:
-                return
-            size = min(w, h)
-            size = max(MIN_PET, min(MAX_PET, size))
-            if abs(size - cfg.pet_size) < 8:
-                return
-            cfg.pet_size = size
-            cfg.save()
+        def open_chat(self) -> None:
+            self.chat.set_visible(True)
             self.apply_size()
+            self.entry.grab_focus()
+
+        def close_chat(self) -> None:
+            self.chat.set_visible(False)
+            self.apply_size()
+
+        def add_message(self, role: str, text: str) -> None:
+            if self._hints.get_parent() is self.msg_box:
+                self.msg_box.remove(self._hints)
+            lab = Gtk.Label(label=text, wrap=True, xalign=0 if role != "user" else 1, max_width_chars=28)
+            lab.add_css_class("wren-msg-user" if role == "user" else "wren-msg-wren")
+            lab.set_halign(Gtk.Align.END if role == "user" else Gtk.Align.START)
+            lab.set_selectable(True)
+            self.msg_box.append(lab)
+            self._messages.append((role, text))
+
+        def send_text(self, text: str | None = None) -> None:
+            msg = (text if text is not None else self.entry.get_text()).strip()
+            if not msg or self._busy:
+                return
+            self.entry.set_text("")
+            self.add_message("user", msg)
+            self.ask_user(msg)
 
         def say(self, text: str, *, animate: bool = False) -> None:
             if animate:
                 self.set_pose("talk")
             self.bubble.set_text(text)
-            self.bubble.set_visible(True)
+            self.speech.set_visible(True)
+            self.apply_size()
             if self._hide_id:
                 GLib.source_remove(self._hide_id)
                 self._hide_id = 0
-            self._hide_id = GLib.timeout_add_seconds(10, self._hide_bubble)
+            self._hide_id = GLib.timeout_add_seconds(12, self._hide_bubble)
 
         def _hide_bubble(self) -> bool:
-            self.bubble.set_visible(False)
+            self.speech.set_visible(False)
             self.set_pose("idle")
+            self.apply_size()
             self._hide_id = 0
             return False
 
@@ -436,16 +634,17 @@ def launch(cfg: WrenConfig) -> None:
             if self._did_drag:
                 self._did_drag = False
                 return
-            if self._busy:
+            if self.chat.get_visible():
                 return
-            self.ask_user()
+            self.open_chat()
 
-        def ask_user(self) -> None:
+        def ask_user(self, prompt: str | None = None) -> None:
             if self._busy:
                 return
             self._busy = True
             self.set_pose("think")
             self.say("Looking…", animate=True)
+            user_prompt = prompt or "The user tapped Wren. Help with whatever they are doing."
 
             def work():
                 if not ollama_ping(cfg):
@@ -453,7 +652,7 @@ def launch(cfg: WrenConfig) -> None:
                 title = active_window_title() or "the desktop"
                 speech, action = ask_ollama(
                     cfg,
-                    "The user tapped Wren. Help with whatever they are doing.",
+                    user_prompt,
                     f"Active window: {title}",
                 )
                 return ("ok", speech, action)
@@ -461,13 +660,15 @@ def launch(cfg: WrenConfig) -> None:
             def done(result) -> None:
                 self._busy = False
                 if isinstance(result, Exception):
-                    self.say("That thought stalled. Tap to try again.")
+                    self.say("That thought stalled. Try again.")
+                    self.add_message("wren", "That thought stalled. Try again.")
                     return
                 kind = result[0]
                 if kind == "need-brain":
                     binary = result[1]
                     if binary is None:
                         self.say("Install Ollama so I can think offline.")
+                        self.add_message("wren", "Install Ollama so I can think offline.")
                         self.prompt_action(
                             ProposedAction(
                                 title="Install Ollama (user-space)",
@@ -480,6 +681,7 @@ def launch(cfg: WrenConfig) -> None:
                         )
                         return
                     self.say("Start my local brain?")
+                    self.add_message("wren", "Start my local brain?")
                     self.prompt_action(
                         ProposedAction(
                             title="Start Ollama",
@@ -493,7 +695,9 @@ def launch(cfg: WrenConfig) -> None:
                     )
                     return
                 _, speech, action = result
-                self.say(speech or "I'm here.", animate=True)
+                line = speech or "I'm here."
+                self.say(line, animate=True)
+                self.add_message("wren", line)
                 if action and cfg.permissions.actions:
                     self.prompt_action(action)
 
@@ -503,7 +707,8 @@ def launch(cfg: WrenConfig) -> None:
             pop = Gtk.Popover()
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
             items = [
-                ("Ask Wren", self.ask_user),
+                ("Chat", self.open_chat),
+                ("Look around", self.ask_user),
                 ("Smaller", lambda: self.bump_size(-24)),
                 ("Bigger", lambda: self.bump_size(24)),
                 (
@@ -578,6 +783,7 @@ def launch(cfg: WrenConfig) -> None:
                 speech, action = result
                 if speech:
                     self.say(speech)
+                    self.add_message("wren", speech)
                 if action and cfg.permissions.actions:
                     self.prompt_action(action)
 
@@ -585,36 +791,39 @@ def launch(cfg: WrenConfig) -> None:
             return True
 
         def prompt_action(self, action: ProposedAction, after=None) -> None:
-            dialog = Gtk.AlertDialog()
-            dialog.set_message(action.title)
-            extra = action.command or action.url
-            dialog.set_detail(f"{action.detail}\n\n{extra}\n\nrisk: {action.risk}")
-            dialog.set_buttons(["No", "Yes"])
-            dialog.set_cancel_button(0)
-            dialog.set_default_button(1)
+            self._pending = action
+            self._pending_after = after
+            extra = action.command or action.url or ""
+            self.perm_title.set_text(action.title)
+            self.perm_detail.set_text(f"{action.detail}\n{extra}\nrisk: {action.risk}")
+            self.perm_box.set_visible(True)
+            self.apply_size()
 
-            def done(_d, res) -> None:
-                try:
-                    choice = dialog.choose_finish(res)
-                except Exception:
-                    return
-                if choice != 1:
-                    return
+        def _answer_perm(self, yes: bool) -> None:
+            action = self._pending
+            after = self._pending_after
+            self._pending = None
+            self._pending_after = None
+            self.perm_box.set_visible(False)
+            self.apply_size()
+            if not yes or action is None:
+                self.say("Okay. I won't.")
+                return
 
-                def work():
-                    return run_action(action, ask=False)
+            def work():
+                return run_action(action, ask=False)
 
-                def finished(result) -> None:
-                    if "install-ollama" in (action.command or ""):
-                        self.say("Installing Ollama… this can take a minute.")
-                    else:
-                        self.say(result if result not in {"started", "nothing-to-run"} else "Okay.")
-                    if after:
-                        GLib.timeout_add(1800, after)
+            def finished(result) -> None:
+                if "install-ollama" in (action.command or ""):
+                    line = "Installing Ollama… this can take a minute."
+                else:
+                    line = result if result not in {"started", "nothing-to-run"} else "Okay."
+                self.say(line)
+                self.add_message("wren", line)
+                if after:
+                    GLib.timeout_add(1800, after)
 
-                self._bg(work, finished)
-
-            dialog.choose(self, None, done)
+            self._bg(work, finished)
 
     class WrenApp(Gtk.Application):
         def __init__(self) -> None:
