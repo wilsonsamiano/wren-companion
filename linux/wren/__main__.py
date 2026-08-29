@@ -9,12 +9,19 @@ from .overlay import launch
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="wren", description="Wren desktop companion")
+    parser.add_argument("--version", action="store_true", help="print version and exit")
     parser.add_argument("--setup", action="store_true", help="write default config and exit")
     parser.add_argument("--model", help="override Ollama model")
     parser.add_argument("--doctor", action="store_true", help="print overlay / Ollama status")
     parser.add_argument("--install-ollama", action="store_true", help="download Ollama into ~/.local")
     parser.add_argument("--ensure-brain", action="store_true", help="start Ollama if it is down")
     args = parser.parse_args()
+
+    if args.version:
+        from . import __version__
+
+        print(__version__)
+        return
 
     cfg = WrenConfig.load()
     ram = detect_ram_gb()

@@ -13,6 +13,7 @@ import urllib.request
 from pathlib import Path
 
 from .config import WrenConfig, pick_model, detect_ram_gb
+from . import __version__
 
 OLLAMA_TGZ = "https://ollama.com/download/ollama-linux-amd64.tgz"
 USER_BIN = Path.home() / ".local" / "bin" / "ollama"
@@ -149,6 +150,7 @@ def pull_model(cfg: WrenConfig) -> str:
 
 def doctor(cfg: WrenConfig) -> str:
     lines = [
+        f"version: {__version__}",
         f"ram:     {detect_ram_gb()} GB",
         f"model:   {cfg.model}",
         f"url:     {cfg.ollama_url}",

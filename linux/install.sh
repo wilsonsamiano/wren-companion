@@ -8,6 +8,15 @@ RAM_GB="$(awk '/MemTotal/ {printf "%d", $2/1024/1024}' /proc/meminfo)"
 echo "Wren installer"
 echo "Detected RAM: ${RAM_GB} GB"
 
+if [[ ! -f "$ROOT/wren/assets/hero.png" ]]; then
+  echo "This checkout is missing the bird sprite (linux/wren/assets/hero.png)."
+  echo "You are on the old 0.1.0 tree. From the repo root run:"
+  echo "  git pull"
+  echo "  git log -1 --oneline   # should mention 0.1.1 or 'Show the bird'"
+  echo "Then run this installer again."
+  exit 1
+fi
+
 if [[ -f /usr/lib/os-release ]]; then
   # shellcheck disable=SC1091
   . /usr/lib/os-release
@@ -82,6 +91,7 @@ esac
 
 python3 -m pip install --user -e "$ROOT"
 export PATH="$HOME/.local/bin:$PATH"
+echo "Installed Wren $(python3 -c 'import wren; print(wren.__version__)')"
 
 # Start Ollama, then pull a RAM-sized model.
 if command -v ollama >/dev/null; then
