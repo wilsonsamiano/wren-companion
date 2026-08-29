@@ -33,12 +33,8 @@ window.wren-window.undecorated {
 window.wren-window decoration,
 window.wren-window headerbar,
 window.wren-window .titlebar,
-window.wren-window windowcontrols,
-.wren-grip, .wren-grip > box {
+window.wren-window windowcontrols {
   background-color: transparent;
-  background-image: none;
-  box-shadow: none;
-  border: none;
   min-height: 0;
   padding: 0;
   margin: 0;
@@ -48,98 +44,85 @@ window.wren-window windowcontrols,
   background-color: transparent;
   background-image: none;
 }
-box.wren-bubble {
-  background-color: #1e2128;
-  color: #ece8e1;
-  padding: 10px 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.10);
-  min-width: 200px;
-  max-width: 260px;
-}
-box.wren-bubble label {
-  color: #ece8e1;
-  background-color: transparent;
-  font-size: 13px;
-  font-weight: 500;
+popover.wren-pop,
+popover.wren-pop > contents,
+popover.wren-speech,
+popover.wren-speech > contents {
+  background-color: #16181d;
+  color: #f6f1ea;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow: 0 18px 50px -18px rgba(0,0,0,0.55);
+  padding: 10px;
 }
 box.wren-chat {
-  background-color: #1e2128;
-  border-radius: 16px;
-  border: 1px solid rgba(255,255,255,0.10);
-  padding: 8px;
+  background-color: #16181d;
+  color: #f6f1ea;
   min-width: 280px;
   min-height: 240px;
 }
-box.wren-chat label {
-  color: #ece8e1;
+box.wren-chat label,
+box.wren-perm label,
+popover.wren-pop label,
+popover.wren-speech label {
+  color: #f6f1ea;
   background-color: transparent;
 }
 label.wren-title {
   font-size: 15px;
   font-weight: 600;
-  color: #ece8e1;
+  color: #f6f1ea;
 }
 label.wren-sub {
-  font-size: 11px;
-  color: #9a958c;
+  font-size: 12px;
+  color: #c8c2b8;
 }
 label.wren-msg-user {
-  background-color: #c5cdd8;
-  color: #111214;
+  background-color: #e8e2d8;
+  color: #141414;
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 13px;
+  font-weight: 500;
 }
 label.wren-msg-wren {
-  background-color: #111214;
-  color: #ece8e1;
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 13px;
-}
-label.wren-hint {
-  background-color: #111214;
-  color: #9a958c;
+  background-color: #111318;
+  color: #f6f1ea;
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 13px;
 }
 box.wren-perm {
-  background-color: #1e2128;
+  background-color: #1c1f26;
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.12);
   padding: 10px 12px;
-  min-width: 240px;
 }
-box.wren-perm label {
-  color: #ece8e1;
-  background-color: transparent;
+popover.wren-speech label {
+  color: #f6f1ea;
+  font-size: 14px;
+  font-weight: 500;
 }
 .wren-chat entry {
-  background-color: #111214;
-  color: #ece8e1;
+  background-color: #0f1115;
+  color: #f6f1ea;
+  caret-color: #f6f1ea;
   border-radius: 8px;
   min-height: 36px;
   padding: 6px 10px;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.14);
 }
 .wren-chat button, .wren-perm button {
-  background-color: #262a33;
-  color: #ece8e1;
+  background-color: #2a2e38;
+  color: #f6f1ea;
   border-radius: 8px;
   min-height: 32px;
   padding: 4px 10px;
 }
-label.wren-tail {
-  color: #1e2128;
-  font-size: 13px;
-  margin-top: -2px;
-  background-color: transparent;
-}
 button.wren-yes {
-  background-color: #c5cdd8;
-  color: #111214;
+  background-color: #e8e2d8;
+  color: #141414;
+  font-weight: 600;
 }
 """
 
@@ -210,28 +193,27 @@ def launch(cfg: WrenConfig) -> None:
             Gtk.StyleContext.add_provider_for_display(
                 Gdk.Display.get_default(),
                 css,
-                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 10,
+                Gtk.STYLE_PROVIDER_PRIORITY_USER,
             )
 
-            root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-            root.add_css_class("wren-root")
-            root.set_halign(Gtk.Align.CENTER)
+            self.picture = Gtk.Picture()
+            self.picture.set_can_shrink(False)
+            self.picture.set_keep_aspect_ratio(True)
+            self.picture.set_halign(Gtk.Align.CENTER)
+            self.picture.set_valign(Gtk.Align.CENTER)
             handle = Gtk.WindowHandle()
-            handle.set_child(root)
+            handle.set_child(self.picture)
             self.set_child(handle)
 
             self.chat = self._build_chat(Gtk)
-            self.chat.set_visible(False)
-            root.append(self.chat)
+            self.chat_pop = Gtk.Popover()
+            self.chat_pop.add_css_class("wren-pop")
+            self.chat_pop.set_autohide(False)
+            self.chat_pop.set_has_arrow(True)
+            self.chat_pop.set_position(Gtk.PositionType.LEFT)
+            self.chat_pop.set_child(self.chat)
+            self.chat_pop.set_parent(self.picture)
 
-            self.perm_box = self._build_perm(Gtk)
-            self.perm_box.set_visible(False)
-            root.append(self.perm_box)
-
-            self.speech = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-            self.speech.set_halign(Gtk.Align.CENTER)
-            self.bubble_wrap = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-            self.bubble_wrap.add_css_class("wren-bubble")
             self.bubble = Gtk.Label(
                 label="",
                 wrap=True,
@@ -239,21 +221,13 @@ def launch(cfg: WrenConfig) -> None:
                 xalign=0,
                 max_width_chars=28,
             )
-            self.bubble_wrap.append(self.bubble)
-            self.speech.append(self.bubble_wrap)
-            tail = Gtk.Label(label="▼")
-            tail.add_css_class("wren-tail")
-            tail.set_halign(Gtk.Align.CENTER)
-            self.speech.append(tail)
-            self.speech.set_visible(False)
-            root.append(self.speech)
-
-            self.picture = Gtk.Picture()
-            self.picture.set_can_shrink(False)
-            self.picture.set_keep_aspect_ratio(True)
-            self.picture.set_halign(Gtk.Align.CENTER)
-            self.picture.set_valign(Gtk.Align.END)
-            root.append(self.picture)
+            self.speech_pop = Gtk.Popover()
+            self.speech_pop.add_css_class("wren-speech")
+            self.speech_pop.set_autohide(False)
+            self.speech_pop.set_has_arrow(True)
+            self.speech_pop.set_position(Gtk.PositionType.TOP)
+            self.speech_pop.set_child(self.bubble)
+            self.speech_pop.set_parent(self.picture)
 
             self._pose = "idle"
             self._frame_i = 0
@@ -345,6 +319,10 @@ def launch(cfg: WrenConfig) -> None:
             header.append(close)
             chat.append(header)
 
+            self.perm_box = self._build_perm(Gtk)
+            self.perm_box.set_visible(False)
+            chat.append(self.perm_box)
+
             self.msg_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
             scroll = Gtk.ScrolledWindow()
             scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -417,9 +395,7 @@ def launch(cfg: WrenConfig) -> None:
 
         def _start_anim(self) -> None:
             if not self._anim_id:
-                self._anim_id = GLib.timeout_add(220, self.tick_anim)
-            if not self._bob_id:
-                self._bob_id = GLib.timeout_add(80, self.tick_bob)
+                self._anim_id = GLib.timeout_add(280, self.tick_anim)
 
         def _stop_anim(self) -> None:
             if self._anim_id:
@@ -428,6 +404,8 @@ def launch(cfg: WrenConfig) -> None:
             if self._bob_id:
                 GLib.source_remove(self._bob_id)
                 self._bob_id = 0
+            self._bob = 0
+            self.picture.set_margin_bottom(0)
 
         def _show_frame(self) -> None:
             frames = self._poses.get(self._pose) or self._poses["idle"]
@@ -465,16 +443,7 @@ def launch(cfg: WrenConfig) -> None:
             cfg.pet_size = size
             self.picture.set_size_request(size, size)
             self._show_frame()
-            chat_on = self.chat.get_visible()
-            extra = 0
-            if chat_on:
-                extra += 280
-            if self.speech.get_visible():
-                extra += 96
-            if self.perm_box.get_visible():
-                extra += 120
-            width = 300 if chat_on else max(size, 240 if extra else size)
-            self.set_default_size(width, size + extra)
+            self.set_default_size(size, size)
             self._applying = False
 
         def bump_size(self, delta: int) -> None:
@@ -497,13 +466,11 @@ def launch(cfg: WrenConfig) -> None:
             return True
 
         def open_chat(self) -> None:
-            self.chat.set_visible(True)
-            self.apply_size()
+            self.chat_pop.popup()
             self.entry.grab_focus()
 
         def close_chat(self) -> None:
-            self.chat.set_visible(False)
-            self.apply_size()
+            self.chat_pop.popdown()
 
         def add_message(self, role: str, text: str) -> None:
             if self._hints.get_parent() is self.msg_box:
@@ -527,17 +494,15 @@ def launch(cfg: WrenConfig) -> None:
             if animate:
                 self.set_pose("talk")
             self.bubble.set_text(text)
-            self.speech.set_visible(True)
-            self.apply_size()
+            self.speech_pop.popup()
             if self._hide_id:
                 GLib.source_remove(self._hide_id)
                 self._hide_id = 0
             self._hide_id = GLib.timeout_add_seconds(12, self._hide_bubble)
 
         def _hide_bubble(self) -> bool:
-            self.speech.set_visible(False)
+            self.speech_pop.popdown()
             self.set_pose("idle")
-            self.apply_size()
             self._hide_id = 0
             return False
 
@@ -634,7 +599,7 @@ def launch(cfg: WrenConfig) -> None:
             if self._did_drag:
                 self._did_drag = False
                 return
-            if self.chat.get_visible():
+            if self.chat_pop.get_visible():
                 return
             self.open_chat()
 
@@ -797,7 +762,7 @@ def launch(cfg: WrenConfig) -> None:
             self.perm_title.set_text(action.title)
             self.perm_detail.set_text(f"{action.detail}\n{extra}\nrisk: {action.risk}")
             self.perm_box.set_visible(True)
-            self.apply_size()
+            self.open_chat()
 
         def _answer_perm(self, yes: bool) -> None:
             action = self._pending
@@ -805,7 +770,6 @@ def launch(cfg: WrenConfig) -> None:
             self._pending = None
             self._pending_after = None
             self.perm_box.set_visible(False)
-            self.apply_size()
             if not yes or action is None:
                 self.say("Okay. I won't.")
                 return

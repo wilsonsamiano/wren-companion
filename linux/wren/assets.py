@@ -11,10 +11,10 @@ APPS = Path.home() / ".local" / "share" / "applications"
 ICON_NAME = "dev.wren.companion"
 ICON_SIZES = (48, 64, 128, 256, 512)
 POSES = {
-    "idle": ("idle-1.png", "idle-2.png", "idle-3.png", "idle-4.png"),
-    "think": ("think-1.png", "think-2.png", "think-3.png", "think-4.png"),
-    "point": ("point-1.png", "point-2.png", "point-3.png", "point-4.png"),
-    "talk": ("hero.png", "idle-1.png", "idle-4.png", "hero.png"),
+    "idle": ("idle-1.png",),
+    "think": ("think-1.png", "think-2.png", "think-4.png"),
+    "point": ("point-1.png", "point-2.png", "point-3.png"),
+    "talk": ("idle-1.png", "idle-2.png", "idle-4.png", "idle-2.png"),
 }
 
 
