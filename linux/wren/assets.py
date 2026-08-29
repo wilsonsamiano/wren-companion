@@ -12,9 +12,9 @@ ICON_NAME = "dev.wren.companion"
 ICON_SIZES = (48, 64, 128, 256, 512)
 POSES = {
     "idle": ("idle-1.png",),
-    "think": ("think-1.png", "think-2.png", "think-4.png"),
+    "think": ("think-1.png", "think-2.png"),
     "point": ("point-1.png", "point-2.png", "point-3.png"),
-    "talk": ("idle-1.png", "idle-2.png", "idle-4.png", "idle-2.png"),
+    "talk": ("idle-1.png", "idle-2.png", "point-1.png", "point-2.png", "point-1.png", "idle-2.png"),
 }
 
 

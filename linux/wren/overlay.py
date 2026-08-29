@@ -20,108 +20,63 @@ os.environ.setdefault("GSK_RENDERER", "cairo")
 
 CSS = b"""
 window.wren-window,
-window.wren-window.background,
-window.wren-window.csd,
-window.wren-window.solid-csd,
-window.wren-window.undecorated {
+window.wren-window.background {
   background-color: transparent;
   background-image: none;
   border: none;
   box-shadow: none;
-  outline: none;
 }
-window.wren-window decoration,
-window.wren-window headerbar,
-window.wren-window .titlebar,
-window.wren-window windowcontrols {
-  background-color: transparent;
-  min-height: 0;
-  padding: 0;
-  margin: 0;
-  opacity: 0;
-}
-.wren-root, windowhandle, picture {
-  background-color: transparent;
-  background-image: none;
-}
-popover.wren-pop,
-popover.wren-pop > contents,
-popover.wren-speech,
-popover.wren-speech > contents {
-  background-color: #16181d;
-  color: #f6f1ea;
-  border-radius: 16px;
-  border: 1px solid rgba(255,255,255,0.14);
-  box-shadow: 0 18px 50px -18px rgba(0,0,0,0.55);
-  padding: 10px;
+popover contents {
+  background-color: #1a1a1a;
+  color: #ffffff;
+  padding: 12px;
+  border-radius: 12px;
 }
 box.wren-chat {
-  background-color: #16181d;
-  color: #f6f1ea;
+  background-color: #1a1a1a;
+  color: #ffffff;
   min-width: 280px;
   min-height: 240px;
 }
-box.wren-chat label,
-box.wren-perm label,
-popover.wren-pop label,
-popover.wren-speech label {
-  color: #f6f1ea;
-  background-color: transparent;
+label, box.wren-chat label, box.wren-perm label {
+  color: #ffffff;
 }
 label.wren-title {
   font-size: 15px;
   font-weight: 600;
-  color: #f6f1ea;
+  color: #ffffff;
 }
 label.wren-sub {
   font-size: 12px;
-  color: #c8c2b8;
+  color: #dddddd;
 }
-label.wren-msg-user {
-  background-color: #e8e2d8;
-  color: #141414;
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 13px;
-  font-weight: 500;
-}
-label.wren-msg-wren {
-  background-color: #111318;
-  color: #f6f1ea;
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 13px;
-}
-box.wren-perm {
-  background-color: #1c1f26;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.12);
-  padding: 10px 12px;
-}
-popover.wren-speech label {
-  color: #f6f1ea;
+label.wren-msg-user, label.wren-msg-wren {
+  color: #ffffff;
+  background-color: transparent;
   font-size: 14px;
   font-weight: 500;
 }
-.wren-chat entry {
-  background-color: #0f1115;
-  color: #f6f1ea;
-  caret-color: #f6f1ea;
-  border-radius: 8px;
+box.wren-perm {
+  background-color: #1a1a1a;
+  padding: 8px;
+}
+entry {
+  background-color: #111111;
+  color: #ffffff;
   min-height: 36px;
   padding: 6px 10px;
-  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 8px;
 }
-.wren-chat button, .wren-perm button {
-  background-color: #2a2e38;
-  color: #f6f1ea;
+button {
+  background-color: #333333;
+  color: #ffffff;
   border-radius: 8px;
   min-height: 32px;
   padding: 4px 10px;
 }
 button.wren-yes {
-  background-color: #e8e2d8;
-  color: #141414;
+  background-color: #444444;
+  color: #ffffff;
   font-weight: 600;
 }
 """
@@ -189,7 +144,8 @@ def launch(cfg: WrenConfig) -> None:
             self._messages: list[tuple[str, str]] = []
 
             css = Gtk.CssProvider()
-            css.load_from_data(CSS)
+            if not css.load_from_data(CSS):
+                print("Wren: CSS failed to load", file=sys.stderr)
             Gtk.StyleContext.add_provider_for_display(
                 Gdk.Display.get_default(),
                 css,
@@ -306,10 +262,12 @@ def launch(cfg: WrenConfig) -> None:
 
             header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
             titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-            name = Gtk.Label(label="Wren", xalign=0)
+            name = Gtk.Label(xalign=0)
             name.add_css_class("wren-title")
-            sub = Gtk.Label(label="Ask, or let her watch", xalign=0)
+            self._set_text(name, "Wren")
+            sub = Gtk.Label(xalign=0)
             sub.add_css_class("wren-sub")
+            self._set_text(sub, "Ask, or let her watch")
             titles.append(name)
             titles.append(sub)
             titles.set_hexpand(True)
@@ -379,6 +337,12 @@ def launch(cfg: WrenConfig) -> None:
             row.append(no)
             box.append(row)
             return box
+
+        def _set_text(self, label, text: str, color: str = "#ffffff") -> None:
+            label.set_use_markup(True)
+            label.set_markup(
+                f'<span foreground="{color}">{GLib.markup_escape_text(text)}</span>'
+            )
 
         def set_pose(self, pose: str) -> None:
             if pose not in self._poses:
@@ -475,10 +439,11 @@ def launch(cfg: WrenConfig) -> None:
         def add_message(self, role: str, text: str) -> None:
             if self._hints.get_parent() is self.msg_box:
                 self.msg_box.remove(self._hints)
-            lab = Gtk.Label(label=text, wrap=True, xalign=0 if role != "user" else 1, max_width_chars=28)
+            lab = Gtk.Label(wrap=True, xalign=0 if role != "user" else 1, max_width_chars=28)
             lab.add_css_class("wren-msg-user" if role == "user" else "wren-msg-wren")
             lab.set_halign(Gtk.Align.END if role == "user" else Gtk.Align.START)
             lab.set_selectable(True)
+            self._set_text(lab, text)
             self.msg_box.append(lab)
             self._messages.append((role, text))
 
@@ -493,7 +458,7 @@ def launch(cfg: WrenConfig) -> None:
         def say(self, text: str, *, animate: bool = False) -> None:
             if animate:
                 self.set_pose("talk")
-            self.bubble.set_text(text)
+            self._set_text(self.bubble, text)
             self.speech_pop.popup()
             if self._hide_id:
                 GLib.source_remove(self._hide_id)
@@ -759,8 +724,8 @@ def launch(cfg: WrenConfig) -> None:
             self._pending = action
             self._pending_after = after
             extra = action.command or action.url or ""
-            self.perm_title.set_text(action.title)
-            self.perm_detail.set_text(f"{action.detail}\n{extra}\nrisk: {action.risk}")
+            self._set_text(self.perm_title, action.title)
+            self._set_text(self.perm_detail, f"{action.detail}\n{extra}\nrisk: {action.risk}", "#dddddd")
             self.perm_box.set_visible(True)
             self.open_chat()
 
