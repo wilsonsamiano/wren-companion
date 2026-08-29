@@ -15,6 +15,7 @@ def main() -> None:
     parser.add_argument("--doctor", action="store_true", help="print overlay / Ollama status")
     parser.add_argument("--install-ollama", action="store_true", help="download Ollama into ~/.local")
     parser.add_argument("--ensure-brain", action="store_true", help="start Ollama if it is down")
+    parser.add_argument("--update", action="store_true", help="git pull + reinstall in place (no uninstall)")
     args = parser.parse_args()
 
     if args.version:
@@ -22,6 +23,11 @@ def main() -> None:
 
         print(__version__)
         return
+
+    if args.update:
+        from .update import run_update
+
+        sys.exit(run_update())
 
     cfg = WrenConfig.load()
     ram = detect_ram_gb()

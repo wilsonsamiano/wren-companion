@@ -6,12 +6,11 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .actions import run_action
-from .assets import pet_path
+from .assets import ICON_NAME, pet_path
 from .brain import ask_ollama
 from .config import WrenConfig
 from .ollama import binary as ollama_binary
 from .ollama import ping as ollama_ping
-from .ollama import start as ollama_start
 from .permissions import ProposedAction
 from .watch import active_window_title
 
@@ -19,39 +18,48 @@ from .watch import active_window_title
 os.environ.setdefault("GSK_RENDERER", "cairo")
 
 CSS = b"""
-window.wren-window {
+window.wren-window,
+window.wren-window.background,
+window.wren-window.csd,
+window.wren-window.solid-csd {
   background-color: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  outline: none;
 }
-.wren-root {
+window.wren-window decoration,
+window.wren-window headerbar,
+.wren-grip, .wren-grip > box {
   background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  border: none;
+  min-height: 8px;
+  padding: 0;
+  margin: 0;
+}
+.wren-root, windowhandle, picture {
+  background-color: transparent;
+  background-image: none;
 }
 .wren-bubble {
-  background-color: #1c1612;
+  background-color: rgba(28, 22, 18, 0.92);
   color: #f6eee4;
-  padding: 10px 14px;
-  border-radius: 16px;
-  font-size: 14px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  font-size: 12px;
   font-weight: 500;
 }
 .wren-bubble label, label.wren-bubble {
   color: #f6eee4;
-  background-color: #1c1612;
-}
-headerbar.wren-bar {
-  min-height: 28px;
-  padding: 0 8px;
-  background: #1c1612;
-  color: #f6eee4;
-  border: none;
-  box-shadow: none;
-}
-headerbar.wren-bar label {
-  color: #f6eee4;
-  font-size: 12px;
+  background-color: transparent;
 }
 """
 
 _POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="wren")
+MIN_PET = 64
+MAX_PET = 240
 
 
 def _load_gi():
@@ -70,8 +78,8 @@ def _load_gi():
         ) from exc
 
 
-def _fallback_pixbuf(GdkPixbuf):
-    pix = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, 192, 192)
+def _fallback_pixbuf(GdkPixbuf, size: int):
+    pix = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, size, size)
     pix.fill(0xC45A2AFF)
     return pix
 
@@ -92,65 +100,64 @@ def launch(cfg: WrenConfig) -> None:
     class WrenWindow(Gtk.ApplicationWindow):
         def __init__(self, app: Gtk.Application) -> None:
             super().__init__(application=app, title="Wren")
-            self.add_css_class("wren-window")
-            self.set_resizable(False)
-            self.set_default_size(260, 360)
+            self.set_css_classes(["wren-window"])
+            self.set_decorated(True)
+            self.set_resizable(True)
+            self.set_icon_name(ICON_NAME)
             self._busy = False
             self._did_drag = False
             self._move_armed = False
+            self._hide_id = 0
+            self._applying = False
+            self._src_pix = None
 
             css = Gtk.CssProvider()
             css.load_from_data(CSS)
             Gtk.StyleContext.add_provider_for_display(
                 Gdk.Display.get_default(),
                 css,
-                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 10,
             )
 
-            # Real CSD header so GNOME/Wayland will let us drag (undecorated
-            # windows cannot be moved on GNOME).
-            bar = Gtk.HeaderBar()
-            bar.add_css_class("wren-bar")
-            bar.set_show_title_buttons(True)
-            bar.set_title_widget(Gtk.Label(label="Wren  ·  drag me"))
-            self.set_titlebar(bar)
+            # Invisible CSD grip so GNOME will still let us drag / resize.
+            grip = Gtk.WindowHandle()
+            grip.add_css_class("wren-grip")
+            strip = Gtk.Box()
+            strip.set_size_request(-1, 8)
+            grip.set_child(strip)
+            self.set_titlebar(grip)
 
-            root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
             root.add_css_class("wren-root")
-            root.set_margin_top(8)
-            root.set_margin_bottom(8)
-            root.set_margin_start(8)
-            root.set_margin_end(8)
-
             handle = Gtk.WindowHandle()
             handle.set_child(root)
             self.set_child(handle)
 
             self.bubble = Gtk.Label(
-                label="Drag me to a corner. Tap when you want help.",
+                label="",
                 wrap=True,
                 justify=Gtk.Justification.CENTER,
-                max_width_chars=28,
+                max_width_chars=22,
             )
             self.bubble.add_css_class("wren-bubble")
             self.bubble.set_halign(Gtk.Align.CENTER)
+            self.bubble.set_visible(False)
             root.append(self.bubble)
 
             self.picture = Gtk.Picture()
-            self.picture.set_size_request(192, 192)
+            self.picture.set_can_shrink(True)
             self.picture.set_halign(Gtk.Align.CENTER)
+            self.picture.set_valign(Gtk.Align.CENTER)
             pet = pet_path()
             try:
                 if pet:
-                    pix = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(pet), 192, 192, True)
+                    self._src_pix = GdkPixbuf.Pixbuf.new_from_file(str(pet))
                 else:
-                    pix = _fallback_pixbuf(GdkPixbuf)
-                self.picture.set_paintable(Gdk.Texture.new_for_pixbuf(pix))
+                    self._src_pix = _fallback_pixbuf(GdkPixbuf, 128)
             except Exception:
-                self.picture.set_paintable(
-                    Gdk.Texture.new_for_pixbuf(_fallback_pixbuf(GdkPixbuf))
-                )
+                self._src_pix = _fallback_pixbuf(GdkPixbuf, 128)
             root.append(self.picture)
+            self.apply_size()
 
             drag = Gtk.GestureDrag()
             drag.set_button(0)
@@ -172,13 +179,85 @@ def launch(cfg: WrenConfig) -> None:
             right.connect("released", lambda *_: self.show_menu())
             self.add_controller(right)
 
+            zoom = Gtk.GestureZoom()
+            zoom.connect("begin", self.on_zoom_begin)
+            zoom.connect("scale-changed", self.on_zoom)
+            zoom.connect("end", lambda *_: cfg.save())
+            self.add_controller(zoom)
+            self._zoom0 = cfg.pet_size
+
+            scroll = Gtk.EventControllerScroll()
+            scroll.set_flags(Gtk.EventControllerScrollFlags.VERTICAL)
+            scroll.connect("scroll", self.on_scroll)
+            self.add_controller(scroll)
+
+            self.connect("notify::default-width", self.on_win_size)
+            self.connect("notify::default-height", self.on_win_size)
+
             if cfg.permissions.watch:
                 GLib.timeout_add_seconds(max(16, int(cfg.watch_seconds)), self.on_watch)
 
             GLib.timeout_add(200, self.boot_brain)
 
+        def apply_size(self) -> None:
+            self._applying = True
+            size = max(MIN_PET, min(MAX_PET, int(cfg.pet_size)))
+            cfg.pet_size = size
+            self.picture.set_size_request(size, size)
+            if self._src_pix is not None:
+                scaled = self._src_pix.scale_simple(size, size, GdkPixbuf.InterpType.BILINEAR)
+                self.picture.set_paintable(Gdk.Texture.new_for_pixbuf(scaled))
+            extra_h = 52 if self.bubble.get_visible() else 12
+            self.set_default_size(size + 12, size + extra_h)
+            self._applying = False
+
+        def bump_size(self, delta: int) -> None:
+            cfg.pet_size = max(MIN_PET, min(MAX_PET, int(cfg.pet_size) + delta))
+            cfg.save()
+            self.apply_size()
+
+        def on_zoom_begin(self, *_args) -> None:
+            self._zoom0 = cfg.pet_size
+
+        def on_zoom(self, _g, scale: float) -> None:
+            cfg.pet_size = int(max(MIN_PET, min(MAX_PET, self._zoom0 * scale)))
+            self.apply_size()
+
+        def on_scroll(self, controller, _dx, dy) -> bool:
+            state = controller.get_current_event_state()
+            if not (state & Gdk.ModifierType.CONTROL_MASK):
+                return False
+            self.bump_size(-16 if dy > 0 else 16)
+            return True
+
+        def on_win_size(self, *_args) -> None:
+            if self._applying:
+                return
+            w, h = self.get_width(), self.get_height()
+            if w < 40 or h < 40:
+                return
+            size = min(w, h) - (48 if self.bubble.get_visible() else 12)
+            size = max(MIN_PET, min(MAX_PET, size))
+            if abs(size - cfg.pet_size) < 8:
+                return
+            cfg.pet_size = size
+            cfg.save()
+            self.apply_size()
+
         def say(self, text: str) -> None:
             self.bubble.set_text(text)
+            self.bubble.set_visible(True)
+            self.apply_size()
+            if self._hide_id:
+                GLib.source_remove(self._hide_id)
+                self._hide_id = 0
+            self._hide_id = GLib.timeout_add_seconds(10, self._hide_bubble)
+
+        def _hide_bubble(self) -> bool:
+            self.bubble.set_visible(False)
+            self.apply_size()
+            self._hide_id = 0
+            return False
 
         def _bg(self, fn, then) -> None:
             def work() -> None:
@@ -191,23 +270,20 @@ def launch(cfg: WrenConfig) -> None:
             _POOL.submit(work)
 
         def boot_brain(self) -> bool:
-            self.say("Checking the local brain…")
-
             def work():
                 return ollama_ping(cfg), ollama_binary()
 
             def done(result) -> None:
                 if isinstance(result, Exception):
-                    self.say("I can perch. Tap me if you want to set up Ollama.")
+                    self.say("Tap me to set up Ollama.")
                     return
                 up, binary = result
                 if up:
-                    self.say("Ready. Drag me, then tap when you want help.")
                     return
                 if binary is None:
-                    self.say("I can perch, but I need Ollama to think. Tap me to install it.")
+                    self.say("Tap me to install Ollama.")
                     return
-                self.say("Ollama is installed but not running. Tap me to start it.")
+                self.say("Tap me to start Ollama.")
 
             self._bg(work, done)
             return False
@@ -218,9 +294,9 @@ def launch(cfg: WrenConfig) -> None:
 
             def done(up) -> None:
                 if up is True:
-                    self.say("There. Tap me when you want help.")
+                    self.say("Ready.")
                 else:
-                    self.say("Still waiting on Ollama. Tap me to retry, or run: ollama serve")
+                    self.say("Still waiting on Ollama.")
 
             self._bg(work, done)
             return False
@@ -232,7 +308,7 @@ def launch(cfg: WrenConfig) -> None:
         def on_drag_update(self, gesture, dx, dy) -> None:
             if self._move_armed:
                 return
-            if abs(dx) < 10 and abs(dy) < 10:
+            if abs(dx) < 8 and abs(dy) < 8:
                 return
             self._did_drag = True
             self._move_armed = True
@@ -281,13 +357,13 @@ def launch(cfg: WrenConfig) -> None:
             def done(result) -> None:
                 self._busy = False
                 if isinstance(result, Exception):
-                    self.say("That thought stalled. Tap me to try again.")
+                    self.say("That thought stalled. Tap to try again.")
                     return
                 kind = result[0]
                 if kind == "need-brain":
                     binary = result[1]
                     if binary is None:
-                        self.say("Install Ollama into ~/.local so I can think offline.")
+                        self.say("Install Ollama so I can think offline.")
                         self.prompt_action(
                             ProposedAction(
                                 title="Install Ollama (user-space)",
@@ -324,10 +400,13 @@ def launch(cfg: WrenConfig) -> None:
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
             items = [
                 ("Ask Wren", self.ask_user),
+                ("Smaller", lambda: self.bump_size(-24)),
+                ("Bigger", lambda: self.bump_size(24)),
                 (
                     "Watch on" if not cfg.permissions.watch else "Watch off",
                     self.toggle_watch,
                 ),
+                ("Update Wren", self.run_update),
                 ("Quit Wren", lambda: self.get_application().quit()),
             ]
             for label, cb in items:
@@ -338,10 +417,26 @@ def launch(cfg: WrenConfig) -> None:
             pop.set_parent(self)
             pop.popup()
 
+        def run_update(self) -> None:
+            self.say("Updating…")
+
+            def work():
+                from .update import run_update
+
+                return run_update()
+
+            def done(code) -> None:
+                if code == 0:
+                    self.say("Updated. Close me and tap Wren in the app grid.")
+                else:
+                    self.say("Update failed. In a terminal: wren --update")
+
+            self._bg(work, done)
+
         def toggle_watch(self) -> None:
             cfg.permissions.watch = not cfg.permissions.watch
             cfg.save()
-            self.say("Watching on." if cfg.permissions.watch else "Watching off. I only look when you tap.")
+            self.say("Watching on." if cfg.permissions.watch else "Watching off.")
 
         def on_watch(self) -> bool:
             if not cfg.permissions.watch or self._busy:
@@ -410,9 +505,12 @@ def launch(cfg: WrenConfig) -> None:
                 flags=Gio.ApplicationFlags.FLAGS_NONE,
             )
 
+        def do_startup(self) -> None:
+            Gtk.Application.do_startup(self)
+            Gtk.Window.set_default_icon_name(ICON_NAME)
+
         def do_activate(self) -> None:
             win = WrenWindow(self)
-            # Layer-shell pins the bird and blocks dragging on GNOME. Skip it.
             win.present()
 
     local_bin = str(Path.home() / ".local" / "bin")

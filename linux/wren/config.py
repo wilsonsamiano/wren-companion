@@ -49,7 +49,8 @@ class WrenConfig:
     grok_api_key: str = ""
     watch_seconds: float = 16.0
     permissions: Permissions = field(default_factory=Permissions)
-    pet_scale: float = 1.0
+    pet_size: int = 96
+    source_dir: str = ""
 
     def save(self) -> Path:
         path = _config_path()
@@ -67,4 +68,8 @@ class WrenConfig:
             return cfg
         raw = json.loads(path.read_text(encoding="utf-8"))
         perm = Permissions(**raw.pop("permissions", {}))
-        return cls(permissions=perm, **{k: v for k, v in raw.items() if k in cls.__dataclass_fields__})
+        raw.pop("pet_scale", None)
+        known = {k: v for k, v in raw.items() if k in cls.__dataclass_fields__}
+        cfg = cls(permissions=perm, **known)
+        cfg.pet_size = max(64, min(240, int(cfg.pet_size or 96)))
+        return cfg

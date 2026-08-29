@@ -255,6 +255,8 @@ def doctor(cfg: WrenConfig) -> str:
         f"binary:  {binary() or 'not found'}",
         f"reachable:{' yes' if ping(cfg) else ' no'}",
         f"distrobox wren: {'yes' if has_distrobox_wren() else 'no'}",
+        f"pet size:{cfg.pet_size} px",
+        f"source:  {cfg.source_dir or 'unknown'}",
     ]
     pet = Path(__file__).resolve().parent / "assets" / "hero.png"
     share = Path.home() / ".local/share/wren/hero.png"
