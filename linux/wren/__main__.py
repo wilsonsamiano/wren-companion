@@ -46,8 +46,17 @@ def main() -> None:
         from .ollama import install_userspace, start, wait_up, pull_model
 
         print("Installing Ollama into ~/.local …")
-        dest = install_userspace()
+        try:
+            dest = install_userspace()
+        except Exception as exc:
+            print(f"Ollama install failed: {exc}")
+            print("Wren still works. On Bazzite you can also run:  brew install ollama")
+            return
         print(f"binary: {dest}")
+        if str(dest).startswith("download-failed") or str(dest).startswith("extract-failed"):
+            print("Wren still launches without a brain. Later: brew install ollama")
+            print("or retry: wren --install-ollama")
+            return
         start(cfg)
         if wait_up(cfg, 12):
             print(f"pulling {cfg.model} …")

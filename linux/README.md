@@ -44,7 +44,7 @@ The host is immutable. Wren runs **on the host** (GTK 4 is already there). Ollam
 
 Then search **Wren** in the app grid, or run `wren`.
 
-If you only see a tiny gray sentence on the wallpaper, you are on 0.1.0 — pull 0.1.1 so the bird sprite and the dark speech bubble ship.
+If you only see a tiny gray sentence on the wallpaper, you are on 0.1.0. Pull 0.1.2 — it ships the bird sprite, a readable bubble, and will not abort if Ollama's download URL 404s.
 
 ```bash
 wren --doctor          # sprite / ollama / RAM

@@ -33,13 +33,13 @@ wren
 
 Already cloned? `git pull`, then `linux/uninstall.sh` (drops the empty 0.1.0 overlay) and `linux/install.sh`.
 
-On Bazzite, if you only get a floating sentence and no bird, you are on 0.1.0. 0.1.1 ships the sprite, a readable bubble, and will start or install Ollama when you click Yes.
+On Bazzite, if you only get a floating sentence and no bird, you are on 0.1.0. 0.1.2 ships the sprite, a readable bubble, and installs the overlay even if Ollama's download 404s.
 
 Details: [linux/README.md](linux/README.md).
 
 ## Status
 
-v0.1.1 — playground + GTK overlay + Ollama brain + gated actions. Help wanted: Hyprland window titles, Piper voices, a quieter watch heuristic.
+v0.1.2 — playground + GTK overlay + Ollama brain + gated actions. Help wanted: Hyprland window titles, Piper voices, a quieter watch heuristic.
 
 ## License
 

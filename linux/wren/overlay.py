@@ -109,7 +109,7 @@ def launch(cfg: WrenConfig) -> None:
             self.set_child(root)
 
             self.bubble = Gtk.Label(
-                label="Wren 0.1.1 — click me when you want help.",
+                label="Wren 0.1.2 — click me when you want help.",
                 wrap=True,
                 justify=Gtk.Justification.CENTER,
                 max_width_chars=28,

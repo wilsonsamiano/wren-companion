@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import os
 import shutil
 import subprocess
@@ -15,10 +16,24 @@ from pathlib import Path
 from .config import WrenConfig, pick_model, detect_ram_gb
 from . import __version__
 
-OLLAMA_TGZ = "https://ollama.com/download/ollama-linux-amd64.tgz"
 USER_BIN = Path.home() / ".local" / "bin" / "ollama"
 USER_LIB = Path.home() / ".local" / "lib" / "ollama"
 LOG = Path.home() / ".local" / "share" / "wren" / "ollama.log"
+
+
+def _arch() -> str:
+    machine = os.uname().machine
+    return {"x86_64": "amd64", "aarch64": "arm64", "arm64": "arm64"}.get(machine, "amd64")
+
+
+def tarball_urls() -> list[str]:
+    arch = _arch()
+    return [
+        f"https://github.com/ollama/ollama/releases/latest/download/ollama-linux-{arch}.tar.zst",
+        f"https://ollama.com/download/ollama-linux-{arch}.tar.zst",
+        f"https://github.com/ollama/ollama/releases/latest/download/ollama-linux-{arch}.tgz",
+        f"https://ollama.com/download/ollama-linux-{arch}.tgz",
+    ]
 
 
 def ping(cfg: WrenConfig, timeout: float = 2.0) -> bool:
@@ -104,32 +119,115 @@ def wait_up(cfg: WrenConfig, seconds: float = 8.0) -> bool:
     return ping(cfg)
 
 
+def _download(url: str, dest: Path) -> bool:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    curl = shutil.which("curl")
+    if curl:
+        result = subprocess.run(
+            [curl, "-fL", "--retry", "3", "--retry-delay", "2", "-A", f"Wren/{__version__}", "-o", str(dest), url],
+            capture_output=True,
+            timeout=300,
+        )
+        return result.returncode == 0 and dest.is_file() and dest.stat().st_size > 1000
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": f"Wren/{__version__}"})
+        with urllib.request.urlopen(req, timeout=120) as resp, dest.open("wb") as fh:
+            shutil.copyfileobj(resp, fh)
+        return dest.is_file() and dest.stat().st_size > 1000
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return False
+
+
+def _extract(archive: Path, dest: Path) -> None:
+    dest.mkdir(parents=True, exist_ok=True)
+    tar = shutil.which("tar")
+    if tar:
+        for extra in (["--zstd"], ["-z"], ["-a"], []):
+            result = subprocess.run(
+                [tar, *extra, "-xf", str(archive), "-C", str(dest)],
+                capture_output=True,
+            )
+            if result.returncode == 0 and any(dest.rglob("ollama")):
+                return
+    try:
+        with tarfile.open(archive) as tf:
+            try:
+                tf.extractall(dest, filter="data")
+            except TypeError:
+                tf.extractall(dest)
+        if any(dest.rglob("ollama")):
+            return
+    except tarfile.TarError:
+        pass
+    try:
+        from compression import zstd
+
+        data = zstd.decompress(archive.read_bytes())
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:") as tf:
+            try:
+                tf.extractall(dest, filter="data")
+            except TypeError:
+                tf.extractall(dest)
+        return
+    except Exception as exc:
+        raise RuntimeError(f"cannot extract {archive.name}: {exc}") from exc
+
+
+def _install_via_brew() -> str | None:
+    brew = shutil.which("brew")
+    if not brew:
+        return None
+    subprocess.run([brew, "install", "ollama"], check=False, timeout=600)
+    return binary()
+
+
 def install_userspace() -> str:
-    """Download the official Linux tarball into ~/.local. No sudo."""
+    """Download the official Linux tarball into ~/.local. No sudo. Never raises."""
+    existing = binary()
+    if existing:
+        return existing
+    try:
+        via_brew = _install_via_brew()
+        if via_brew:
+            return via_brew
+    except (subprocess.SubprocessError, OSError):
+        pass
+
     USER_BIN.parent.mkdir(parents=True, exist_ok=True)
     USER_LIB.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory() as tmp:
-        tgz = Path(tmp) / "ollama.tgz"
-        urllib.request.urlretrieve(OLLAMA_TGZ, tgz)
-        with tarfile.open(tgz, "r:gz") as tf:
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "ollama.archive"
+            extract_dir = Path(tmp) / "extract"
+            extract_dir.mkdir()
+            used = None
+            for url in tarball_urls():
+                if _download(url, archive):
+                    used = url
+                    break
+            if used is None:
+                return "download-failed: ollama tarball 404 (try: brew install ollama)"
             try:
-                tf.extractall(tmp, filter="data")
-            except TypeError:
-                tf.extractall(tmp)
-        extracted = None
-        for p in Path(tmp).rglob("ollama"):
-            if p.is_file() and os.access(p, os.X_OK) and p.name == "ollama":
-                extracted = p
-                break
-        if extracted is None:
-            return "download-failed"
-        shutil.copy2(extracted, USER_BIN)
-        USER_BIN.chmod(0o755)
-        libsrc = extracted.parent.parent / "lib" / "ollama"
-        if libsrc.is_dir():
-            if USER_LIB.exists():
+                _extract(archive, extract_dir)
+            except RuntimeError as exc:
+                return f"extract-failed: {exc}"
+            extracted = None
+            for path in extract_dir.rglob("ollama"):
+                if path.is_file() and path.name == "ollama":
+                    extracted = path
+                    break
+            if extracted is None:
+                return "download-failed: no ollama binary in archive"
+            shutil.copy2(extracted, USER_BIN)
+            USER_BIN.chmod(0o755)
+            libsrc = extracted.parent.parent / "lib" / "ollama"
+            if not libsrc.is_dir():
+                libsrc = extracted.parent / "lib" / "ollama"
+            if libsrc.is_dir():
                 shutil.copytree(libsrc, USER_LIB, dirs_exist_ok=True)
-    return str(USER_BIN)
+        return str(USER_BIN)
+    except Exception as exc:
+        return f"download-failed: {exc}"
 
 
 def pull_model(cfg: WrenConfig) -> str:
