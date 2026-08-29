@@ -6,8 +6,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .assets import linux_root, sync_assets, write_desktop
+from .assets import linux_root, repair_icons, sync_assets, write_desktop
 from .config import WrenConfig
+from .topmost import install_gnome_helper
 
 
 def find_linux_root() -> Path | None:
@@ -44,6 +45,7 @@ def run_update() -> int:
         return 1
     repo = git_repo(root)
     print(f"Updating {repo} …")
+    repair_icons()
     pull = subprocess.run(["git", "-C", str(repo), "pull", "--ff-only"])
     if pull.returncode != 0:
         print("git pull failed. Your clone may have local edits.")
@@ -60,6 +62,7 @@ def run_update() -> int:
     cfg.save()
     sync_assets(root)
     write_desktop()
+    install_gnome_helper(cfg.always_on_top)
     ver = subprocess.check_output(
         [sys.executable, "-c", "from wren import __version__; print(__version__)"],
         text=True,

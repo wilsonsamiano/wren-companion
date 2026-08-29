@@ -10,6 +10,12 @@ PIXMAPS = Path.home() / ".local" / "share" / "pixmaps"
 APPS = Path.home() / ".local" / "share" / "applications"
 ICON_NAME = "dev.wren.companion"
 ICON_SIZES = (48, 64, 128, 256, 512)
+POSES = {
+    "idle": ("idle-1.png", "idle-2.png", "idle-3.png", "idle-4.png"),
+    "think": ("think-1.png", "think-2.png", "think-3.png", "think-4.png"),
+    "point": ("point-1.png", "point-2.png", "point-3.png", "point-4.png"),
+    "talk": ("hero.png", "idle-1.png", "idle-4.png", "hero.png"),
+}
 
 
 def bundled_hero() -> Path | None:
@@ -22,29 +28,37 @@ def bundled_icon() -> Path | None:
     return p if p.is_file() else bundled_hero()
 
 
+def bundled_pose(name: str) -> Path | None:
+    p = Path(__file__).resolve().parent / "assets" / name
+    return p if p.is_file() else None
+
+
 def linux_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def _ensure_hicolor_index() -> None:
+def repair_icons() -> None:
+    """Undo the 0.1.5 stub that overwrote user hicolor and blanked other apps."""
     index = HICOLOR / "index.theme"
     if index.is_file():
-        return
-    HICOLOR.mkdir(parents=True, exist_ok=True)
-    dirs = ",".join(f"{s}x{s}/apps" for s in ICON_SIZES)
-    blocks = [f"[Icon Theme]", "Name=Hicolor", f"Directories={dirs}", ""]
-    for s in ICON_SIZES:
-        blocks += [f"[{s}x{s}/apps]", f"Size={s}", "Context=Applications", "Type=Fixed", ""]
-    index.write_text("\n".join(blocks), encoding="utf-8")
+        text = index.read_text(encoding="utf-8", errors="ignore")
+        if "512x512/apps" in text and "Name=Hicolor" in text and "Inherits=" not in text:
+            index.unlink()
+    cache = HICOLOR / "icon-theme.cache"
+    if cache.exists():
+        cache.unlink()
+    kcache = Path.home() / ".cache" / "icon-cache.kcache"
+    if kcache.exists():
+        kcache.unlink()
 
 
 def install_icons(src: Path | None = None) -> Path | None:
+    repair_icons()
     icon = bundled_icon()
     if src is not None and src.is_file() and src.name == "icon.png":
         icon = src
     if icon is None:
         return None
-    _ensure_hicolor_index()
     for size in ICON_SIZES:
         dest_dir = HICOLOR / f"{size}x{size}" / "apps"
         dest_dir.mkdir(parents=True, exist_ok=True)
@@ -52,8 +66,8 @@ def install_icons(src: Path | None = None) -> Path | None:
     PIXMAPS.mkdir(parents=True, exist_ok=True)
     pixmap = PIXMAPS / f"{ICON_NAME}.png"
     shutil.copy2(icon, pixmap)
-    subprocess.run(["gtk4-update-icon-cache", "-f", "-t", str(HICOLOR)], capture_output=True, check=False)
-    subprocess.run(["gtk-update-icon-cache", "-f", "-t", str(HICOLOR)], capture_output=True, check=False)
+    # Do NOT write index.theme or gtk-update-icon-cache on ~/.local hicolor.
+    # That stub hid every other app's icon on GNOME.
     return pixmap
 
 
@@ -87,7 +101,6 @@ def write_desktop() -> Path:
         encoding="utf-8",
     )
     subprocess.run(["update-desktop-database", str(APPS)], capture_output=True, check=False)
-    subprocess.run(["xdg-desktop-menu", "forceupdate"], capture_output=True, check=False)
     pin_dash()
     return path
 
@@ -119,6 +132,7 @@ def pin_dash() -> None:
 
 
 def sync_assets(root: Path | None = None) -> Path | None:
+    repair_icons()
     src = None
     if root:
         candidate = Path(root) / "wren" / "assets" / "hero.png"
@@ -131,14 +145,37 @@ def sync_assets(root: Path | None = None) -> Path | None:
     SHARE.mkdir(parents=True, exist_ok=True)
     dest = SHARE / "hero.png"
     shutil.copy2(src, dest)
-    icon_src = None
+    assets_dir = Path(__file__).resolve().parent / "assets"
     if root:
-        ic = Path(root) / "wren" / "assets" / "icon.png"
-        if ic.is_file():
-            icon_src = ic
-    install_icons(icon_src)
+        alt = Path(root) / "wren" / "assets"
+        if alt.is_dir():
+            assets_dir = alt
+    for names in POSES.values():
+        for name in names:
+            f = assets_dir / name
+            if f.is_file():
+                shutil.copy2(f, SHARE / name)
+    icon_src = assets_dir / "icon.png"
+    install_icons(icon_src if icon_src.is_file() else None)
     write_desktop()
     return dest
+
+
+def pose_files(pose: str = "idle") -> list[Path]:
+    names = POSES.get(pose, POSES["idle"])
+    found: list[Path] = []
+    for name in names:
+        bundled = bundled_pose(name)
+        shared = SHARE / name
+        if bundled and bundled.is_file():
+            found.append(bundled)
+        elif shared.is_file():
+            found.append(shared)
+    if not found:
+        hero = pet_path()
+        if hero:
+            found.append(hero)
+    return found
 
 
 def pet_path() -> Path | None:
@@ -152,8 +189,6 @@ def pet_path() -> Path | None:
             or src.stat().st_mtime > dest.stat().st_mtime
         ):
             shutil.copy2(src, dest)
-            install_icons()
-            write_desktop()
         return dest
     if dest.is_file() and dest.stat().st_size > 1000:
         return dest

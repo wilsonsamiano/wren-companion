@@ -16,6 +16,7 @@ def main() -> None:
     parser.add_argument("--install-ollama", action="store_true", help="download Ollama into ~/.local")
     parser.add_argument("--ensure-brain", action="store_true", help="start Ollama if it is down")
     parser.add_argument("--update", action="store_true", help="git pull + reinstall in place (no uninstall)")
+    parser.add_argument("--repair", action="store_true", help="fix broken app icons caused by an old Wren install")
     args = parser.parse_args()
 
     if args.version:
@@ -28,6 +29,18 @@ def main() -> None:
         from .update import run_update
 
         sys.exit(run_update())
+
+    if args.repair:
+        from .assets import repair_icons, install_icons, write_desktop
+        from .topmost import install_gnome_helper
+
+        repair_icons()
+        install_icons()
+        write_desktop()
+        install_gnome_helper(True)
+        print("Removed the stub icon theme. Other apps should get their icons back.")
+        print("If they are still gears, log out once.")
+        return
 
     cfg = WrenConfig.load()
     ram = detect_ram_gb()

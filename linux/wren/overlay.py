@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .actions import run_action
-from .assets import ICON_NAME, pet_path
+from .assets import ICON_NAME, pet_path, pose_files
 from .brain import ask_ollama
 from .config import WrenConfig
 from .ollama import binary as ollama_binary
@@ -150,14 +150,30 @@ def launch(cfg: WrenConfig) -> None:
             self.picture.set_can_shrink(True)
             self.picture.set_halign(Gtk.Align.CENTER)
             self.picture.set_valign(Gtk.Align.CENTER)
-            pet = pet_path()
-            try:
-                if pet:
-                    self._src_pix = GdkPixbuf.Pixbuf.new_from_file(str(pet))
-                else:
-                    self._src_pix = _fallback_pixbuf(GdkPixbuf, 128)
-            except Exception:
-                self._src_pix = _fallback_pixbuf(GdkPixbuf, 128)
+            self._pose = "idle"
+            self._frame_i = 0
+            self._bob = 0
+            self._bob_dir = 1
+            self._poses: dict = {}
+            for pose in ("idle", "think", "point", "talk"):
+                pixs = []
+                for path in pose_files(pose):
+                    try:
+                        pixs.append(GdkPixbuf.Pixbuf.new_from_file(str(path)))
+                    except Exception:
+                        pass
+                if pixs:
+                    self._poses[pose] = pixs
+            if "idle" not in self._poses:
+                pet = pet_path()
+                try:
+                    if pet:
+                        self._poses["idle"] = [GdkPixbuf.Pixbuf.new_from_file(str(pet))]
+                    else:
+                        self._poses["idle"] = [_fallback_pixbuf(GdkPixbuf, 128)]
+                except Exception:
+                    self._poses["idle"] = [_fallback_pixbuf(GdkPixbuf, 128)]
+            self._src_pix = self._poses["idle"][0]
             root.append(self.picture)
             self.apply_size()
 
@@ -205,6 +221,37 @@ def launch(cfg: WrenConfig) -> None:
 
             GLib.timeout_add(200, self.boot_brain)
             GLib.timeout_add(700, self._first_pin)
+            GLib.timeout_add(380, self.tick_anim)
+            GLib.timeout_add(80, self.tick_bob)
+
+        def set_pose(self, pose: str) -> None:
+            if pose not in self._poses:
+                pose = "idle"
+            self._pose = pose
+            self._frame_i = 0
+            self._show_frame()
+
+        def _show_frame(self) -> None:
+            frames = self._poses.get(self._pose) or self._poses["idle"]
+            self._src_pix = frames[self._frame_i % len(frames)]
+            size = max(MIN_PET, min(MAX_PET, int(cfg.pet_size)))
+            scaled = self._src_pix.scale_simple(size, size, GdkPixbuf.InterpType.BILINEAR)
+            self.picture.set_paintable(Gdk.Texture.new_for_pixbuf(scaled))
+
+        def tick_anim(self) -> bool:
+            frames = self._poses.get(self._pose) or self._poses["idle"]
+            self._frame_i = (self._frame_i + 1) % len(frames)
+            self._show_frame()
+            return True
+
+        def tick_bob(self) -> bool:
+            self._bob += self._bob_dir
+            if self._bob >= 5:
+                self._bob_dir = -1
+            elif self._bob <= 0:
+                self._bob_dir = 1
+            self.picture.set_margin_bottom(self._bob)
+            return True
 
         def apply_size(self) -> None:
             self._applying = True
@@ -252,6 +299,7 @@ def launch(cfg: WrenConfig) -> None:
             self.apply_size()
 
         def say(self, text: str) -> None:
+            self.set_pose("talk")
             self.bubble.set_text(text)
             self.bubble.set_visible(True)
             self.apply_size()
@@ -262,6 +310,7 @@ def launch(cfg: WrenConfig) -> None:
 
         def _hide_bubble(self) -> bool:
             self.bubble.set_visible(False)
+            self.set_pose("idle")
             self.apply_size()
             self._hide_id = 0
             return False
@@ -367,6 +416,7 @@ def launch(cfg: WrenConfig) -> None:
             if self._busy:
                 return
             self._busy = True
+            self.set_pose("think")
             self.say("Looking…")
 
             def work():

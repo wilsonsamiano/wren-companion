@@ -11,6 +11,17 @@ if [[ "${1:-}" == "--update" || "${1:-}" == "--skip-ollama" ]]; then
   SKIP_OLLAMA=1
 fi
 
+# 0.1.5 wrote a stub ~/.local/share/icons/hicolor/index.theme that hid
+# every other app's icon (Brave, etc. became generic gears). Undo that first.
+if [[ -f "$HOME/.local/share/icons/hicolor/index.theme" ]]; then
+  if grep -q '512x512/apps' "$HOME/.local/share/icons/hicolor/index.theme" 2>/dev/null \
+     && ! grep -q 'Inherits=' "$HOME/.local/share/icons/hicolor/index.theme" 2>/dev/null; then
+    rm -f "$HOME/.local/share/icons/hicolor/index.theme"
+    echo "Removed the stub icon theme that was hiding other apps."
+  fi
+fi
+rm -f "$HOME/.local/share/icons/hicolor/icon-theme.cache" "$HOME/.cache/icon-cache.kcache"
+
 echo "Wren installer"
 echo "Detected RAM: ${RAM_GB} GB"
 
@@ -58,15 +69,16 @@ echo "Installed Wren $(python3 -c 'import wren; print(wren.__version__)')"
 python3 - <<PY
 from pathlib import Path
 from wren.config import WrenConfig
-from wren.assets import sync_assets, write_desktop
+from wren.assets import sync_assets, write_desktop, repair_icons
 from wren.topmost import install_gnome_helper
 cfg = WrenConfig.load()
 cfg.source_dir = r"$ROOT"
 cfg.save()
+repair_icons()
 sync_assets(Path(r"$ROOT"))
 write_desktop()
 install_gnome_helper(cfg.always_on_top)
-print("icons + desktop + GNOME helper refreshed")
+print("icons repaired + desktop + GNOME helper refreshed")
 PY
 
 if [[ "$SKIP_OLLAMA" -eq 0 ]]; then
@@ -92,7 +104,7 @@ fi
 echo
 echo "Launch with:  wren     (or search Wren in the app grid)"
 echo "Update with:  wren --update"
-echo "Version:      wren --version    (must print 0.1.6)"
+echo "Version:      wren --version    (must print 0.1.7)"
 echo "Status:       wren --doctor"
 echo "Config:       ~/.config/wren/config.json"
 echo "Wren will not click, type, or go online unless you allow it."

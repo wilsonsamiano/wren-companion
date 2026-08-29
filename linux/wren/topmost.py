@@ -80,6 +80,24 @@ def install_gnome_helper(enabled: bool = True) -> None:
     )
     cmd = "enable" if enabled else "disable"
     subprocess.run(["gnome-extensions", cmd, EXT_UUID], capture_output=True, check=False)
+    method = "EnableExtension" if enabled else "DisableExtension"
+    for meth in (method, "ReloadExtension"):
+        subprocess.run(
+            [
+                "gdbus",
+                "call",
+                "--session",
+                "--dest",
+                "org.gnome.Shell.Extensions",
+                "--object-path",
+                "/org/gnome/Shell/Extensions",
+                "--method",
+                f"org.gnome.Shell.Extensions.{meth}",
+                EXT_UUID,
+            ],
+            capture_output=True,
+            check=False,
+        )
     if enabled:
         pin_dash()
 
