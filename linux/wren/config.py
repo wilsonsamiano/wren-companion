@@ -36,7 +36,7 @@ def pick_model(ram_gb: int) -> str:
 
 @dataclass
 class Permissions:
-    watch: bool = True
+    watch: bool = False
     voice: bool = False
     actions: bool = True
     internet: bool = False

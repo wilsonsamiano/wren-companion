@@ -13,7 +13,7 @@ if [[ ! -f "$ROOT/wren/assets/hero.png" ]]; then
   echo "This checkout is missing the bird sprite (linux/wren/assets/hero.png)."
   echo "You are on the old 0.1.0 tree. From the repo root run:"
   echo "  git pull"
-  echo "  git log -1 --oneline   # should mention 0.1.2"
+  echo "  git log -1 --oneline   # should mention 0.1.3"
   echo "Then run this installer again."
   exit 1
 fi
@@ -90,7 +90,7 @@ fi
 
 echo
 echo "Launch with:  wren     (or search Wren in the app grid)"
-echo "Version:      wren --version    (must print 0.1.2)"
+echo "Version:      wren --version    (must print 0.1.3)"
 echo "Status:       wren --doctor"
 echo "Config:       ~/.config/wren/config.json"
 echo "Wren will not click, type, or go online unless you allow it."
