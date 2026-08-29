@@ -51,6 +51,9 @@ class WrenConfig:
     permissions: Permissions = field(default_factory=Permissions)
     pet_size: int = 96
     source_dir: str = ""
+    always_on_top: bool = True
+    margin_right: int = 24
+    margin_bottom: int = 24
 
     def save(self) -> Path:
         path = _config_path()

@@ -12,6 +12,7 @@ from .config import WrenConfig
 from .ollama import binary as ollama_binary
 from .ollama import ping as ollama_ping
 from .permissions import ProposedAction
+from .topmost import attach_layer_shell, maybe_force_x11, move_layer, x11_set_above
 from .watch import active_window_title
 
 # Old Intel (Surface Go 2 HD 615) hangs on GTK4's ngl renderer.
@@ -85,6 +86,8 @@ def _fallback_pixbuf(GdkPixbuf, size: int):
 
 
 def launch(cfg: WrenConfig) -> None:
+    if cfg.always_on_top:
+        maybe_force_x11()
     Gtk, Gdk, GdkPixbuf, GLib, Gio = _load_gi()
 
     def ui(fn, *args):
@@ -110,6 +113,8 @@ def launch(cfg: WrenConfig) -> None:
             self._hide_id = 0
             self._applying = False
             self._src_pix = None
+            self._layer = False
+            self._drag_origin = (cfg.margin_right, cfg.margin_bottom)
 
             css = Gtk.CssProvider()
             css.load_from_data(CSS)
@@ -163,6 +168,7 @@ def launch(cfg: WrenConfig) -> None:
             drag.set_button(0)
             drag.connect("drag-begin", self.on_drag_begin)
             drag.connect("drag-update", self.on_drag_update)
+            drag.connect("drag-end", lambda *_: cfg.save())
             self.add_controller(drag)
 
             click = Gtk.GestureClick()
@@ -197,7 +203,15 @@ def launch(cfg: WrenConfig) -> None:
             if cfg.permissions.watch:
                 GLib.timeout_add_seconds(max(16, int(cfg.watch_seconds)), self.on_watch)
 
+            if cfg.always_on_top:
+                self.set_decorated(False)
+                self.set_titlebar(None)
+                self._layer = attach_layer_shell(self, cfg)
+                if not self._layer:
+                    self.set_decorated(True)
+
             GLib.timeout_add(200, self.boot_brain)
+            GLib.timeout_add(700, self._first_pin)
 
         def apply_size(self) -> None:
             self._applying = True
@@ -304,8 +318,14 @@ def launch(cfg: WrenConfig) -> None:
         def on_drag_begin(self, *_args) -> None:
             self._did_drag = False
             self._move_armed = False
+            self._drag_origin = (cfg.margin_right, cfg.margin_bottom)
 
         def on_drag_update(self, gesture, dx, dy) -> None:
+            if self._layer:
+                self._did_drag = abs(dx) > 6 or abs(dy) > 6
+                if self._did_drag:
+                    move_layer(self, cfg, dx, dy, self._drag_origin)
+                return
             if self._move_armed:
                 return
             if abs(dx) < 8 and abs(dy) < 8:
@@ -328,6 +348,19 @@ def launch(cfg: WrenConfig) -> None:
                 surface.begin_move(device, 1, 0, 0, gesture.get_current_event_time())
             except Exception:
                 pass
+
+        def _first_pin(self) -> bool:
+            self.pin_above()
+            GLib.timeout_add_seconds(4, self.pin_above)
+            return False
+
+        def pin_above(self) -> bool:
+            if not cfg.always_on_top:
+                return False
+            if self._layer:
+                return False
+            x11_set_above(self)
+            return True
 
         def on_click(self, *_args) -> None:
             if self._did_drag:
@@ -403,6 +436,10 @@ def launch(cfg: WrenConfig) -> None:
                 ("Smaller", lambda: self.bump_size(-24)),
                 ("Bigger", lambda: self.bump_size(24)),
                 (
+                    "Float on top" if not cfg.always_on_top else "Don't stay on top",
+                    self.toggle_top,
+                ),
+                (
                     "Watch on" if not cfg.permissions.watch else "Watch off",
                     self.toggle_watch,
                 ),
@@ -437,6 +474,15 @@ def launch(cfg: WrenConfig) -> None:
             cfg.permissions.watch = not cfg.permissions.watch
             cfg.save()
             self.say("Watching on." if cfg.permissions.watch else "Watching off.")
+
+        def toggle_top(self) -> None:
+            cfg.always_on_top = not cfg.always_on_top
+            cfg.save()
+            if cfg.always_on_top:
+                self.pin_above()
+                self.say("I'll stay on top. Restart me if I still slip behind.")
+            else:
+                self.say("I won't stay on top. Restart me to apply.")
 
         def on_watch(self) -> bool:
             if not cfg.permissions.watch or self._busy:

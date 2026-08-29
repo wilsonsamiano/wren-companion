@@ -3,4 +3,4 @@
 Offline-first. Watches only with permission. Never acts until you say yes.
 """
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"

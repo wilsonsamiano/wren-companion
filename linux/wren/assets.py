@@ -17,34 +17,54 @@ def bundled_hero() -> Path | None:
     return p if p.is_file() else None
 
 
+def bundled_icon() -> Path | None:
+    p = Path(__file__).resolve().parent / "assets" / "icon.png"
+    return p if p.is_file() else bundled_hero()
+
+
 def linux_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def install_icons(src: Path) -> None:
-    if not src.is_file():
+def _ensure_hicolor_index() -> None:
+    index = HICOLOR / "index.theme"
+    if index.is_file():
         return
+    HICOLOR.mkdir(parents=True, exist_ok=True)
+    dirs = ",".join(f"{s}x{s}/apps" for s in ICON_SIZES)
+    blocks = [f"[Icon Theme]", "Name=Hicolor", f"Directories={dirs}", ""]
+    for s in ICON_SIZES:
+        blocks += [f"[{s}x{s}/apps]", f"Size={s}", "Context=Applications", "Type=Fixed", ""]
+    index.write_text("\n".join(blocks), encoding="utf-8")
+
+
+def install_icons(src: Path | None = None) -> Path | None:
+    icon = bundled_icon()
+    if src is not None and src.is_file() and src.name == "icon.png":
+        icon = src
+    if icon is None:
+        return None
+    _ensure_hicolor_index()
     for size in ICON_SIZES:
         dest_dir = HICOLOR / f"{size}x{size}" / "apps"
         dest_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dest_dir / f"{ICON_NAME}.png")
+        shutil.copy2(icon, dest_dir / f"{ICON_NAME}.png")
     PIXMAPS.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, PIXMAPS / f"{ICON_NAME}.png")
-    subprocess.run(
-        ["gtk4-update-icon-cache", "-f", str(HICOLOR)],
-        capture_output=True,
-        check=False,
-    )
-    subprocess.run(
-        ["gtk-update-icon-cache", "-f", str(HICOLOR)],
-        capture_output=True,
-        check=False,
-    )
+    pixmap = PIXMAPS / f"{ICON_NAME}.png"
+    shutil.copy2(icon, pixmap)
+    subprocess.run(["gtk4-update-icon-cache", "-f", "-t", str(HICOLOR)], capture_output=True, check=False)
+    subprocess.run(["gtk-update-icon-cache", "-f", "-t", str(HICOLOR)], capture_output=True, check=False)
+    return pixmap
 
 
 def write_desktop() -> Path:
     APPS.mkdir(parents=True, exist_ok=True)
-    path = APPS / "wren.desktop"
+    old = APPS / "wren.desktop"
+    if old.exists():
+        old.unlink()
+    pixmap = PIXMAPS / f"{ICON_NAME}.png"
+    icon_value = str(pixmap) if pixmap.is_file() else ICON_NAME
+    path = APPS / f"{ICON_NAME}.desktop"
     home = Path.home()
     path.write_text(
         "\n".join(
@@ -53,10 +73,11 @@ def write_desktop() -> Path:
                 "Name=Wren",
                 "Comment=Desktop companion",
                 f"Exec=env PATH={home}/.local/bin:/usr/bin:/home/linuxbrew/.linuxbrew/bin wren",
-                f"Icon={ICON_NAME}",
+                f"Icon={icon_value}",
                 "Terminal=false",
                 "Type=Application",
                 "StartupWMClass=dev.wren.companion",
+                "StartupNotify=true",
                 "Categories=Utility;",
                 "X-GNOME-UsesNotifications=true",
                 "",
@@ -70,7 +91,6 @@ def write_desktop() -> Path:
 
 
 def sync_assets(root: Path | None = None) -> Path | None:
-    """Copy the bundled bird into ~/.local/share and refresh icons. Always overwrites."""
     src = None
     if root:
         candidate = Path(root) / "wren" / "assets" / "hero.png"
@@ -83,13 +103,17 @@ def sync_assets(root: Path | None = None) -> Path | None:
     SHARE.mkdir(parents=True, exist_ok=True)
     dest = SHARE / "hero.png"
     shutil.copy2(src, dest)
-    install_icons(src)
+    icon_src = None
+    if root:
+        ic = Path(root) / "wren" / "assets" / "icon.png"
+        if ic.is_file():
+            icon_src = ic
+    install_icons(icon_src)
     write_desktop()
     return dest
 
 
 def pet_path() -> Path | None:
-    """Prefer the bundled sprite (so --update replaces an old badge PNG)."""
     dest = SHARE / "hero.png"
     src = bundled_hero()
     if src is not None:
@@ -100,7 +124,8 @@ def pet_path() -> Path | None:
             or src.stat().st_mtime > dest.stat().st_mtime
         ):
             shutil.copy2(src, dest)
-            install_icons(src)
+            install_icons()
+            write_desktop()
         return dest
     if dest.is_file() and dest.stat().st_size > 1000:
         return dest
