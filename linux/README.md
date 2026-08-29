@@ -1,6 +1,6 @@
 # Wren for Linux
 
-A tiny always-on-top companion for Wayland desktops (KDE on CachyOS, KDE/GNOME on Bazzite).
+A tiny always-on-top companion for Wayland desktops (KDE on CachyOS, GNOME/KDE on Bazzite).
 
 Wren watches the active window **only if you let her**, talks through a local Ollama model, and **never runs a command or hits the network without a Yes**.
 
@@ -9,7 +9,7 @@ Wren watches the active window **only if you let her**, talks through a local Ol
 | Machine | RAM | Model Wren picks | Watch |
 |---|---|---|---|
 | CachyOS · XPS-class | 64 GB | `qwen2.5:14b` Q4 | ~14s |
-| Bazzite · Surface Go 2 | 8 GB | `llama3.2:1b` or `phi3:mini` | ~28s |
+| Bazzite · Surface Go 2 | 8 GB | `llama3.2:1b` | ~28s |
 
 The overlay itself is a GTK window. RAM goes to the model, not to Wren.
 
@@ -23,13 +23,33 @@ chmod +x install.sh
 wren
 ```
 
+If you already cloned, update and reinstall:
+
+```bash
+cd wren-companion
+git pull
+cd linux
+./install.sh
+wren
+```
+
 ### CachyOS
 
 `install.sh` uses pacman for `gtk4`, `python-gobject`, `ollama`, `grim`, `tesseract`.
 
-### Bazzite
+### Bazzite (GNOME)
 
-The host is immutable. `install.sh` creates a Fedora distrobox named `wren` and installs there.
+The host is immutable. Wren runs **on the host** (GTK 4 is already there). Ollama is dropped into `~/.local/bin` so you don't need sudo or a distrobox just to think.
+
+Then search **Wren** in the app grid, or run `wren`.
+
+If you only see a tiny gray sentence on the wallpaper, you are on 0.1.0 — pull 0.1.1 so the bird sprite and the dark speech bubble ship.
+
+```bash
+wren --doctor          # sprite / ollama / RAM
+wren --ensure-brain    # start ollama if it is down
+wren --install-ollama  # download the official binary into ~/.local
+```
 
 ## Permissions
 
@@ -41,5 +61,17 @@ Stored in `~/.config/wren/config.json`:
 - `internet` — optional Grok key, still per-request
 
 There is no hidden telemetry. Read `wren/brain.py` and `wren/actions.py` — they are short on purpose.
+
+## Optional hosted brain
+
+Put an xAI key in config as `grok_api_key` if you want a cloud fallback. Wren still asks before any live lookup.
+
+## Development
+
+```bash
+python3 -m wren --setup
+python3 -m wren --doctor
+python3 -m wren
+```
 
 PRs welcome. Keep the contract: **offline first, visible, gated.**

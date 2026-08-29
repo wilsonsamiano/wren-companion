@@ -11,6 +11,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="wren", description="Wren desktop companion")
     parser.add_argument("--setup", action="store_true", help="write default config and exit")
     parser.add_argument("--model", help="override Ollama model")
+    parser.add_argument("--doctor", action="store_true", help="print overlay / Ollama status")
+    parser.add_argument("--install-ollama", action="store_true", help="download Ollama into ~/.local")
+    parser.add_argument("--ensure-brain", action="store_true", help="start Ollama if it is down")
     args = parser.parse_args()
 
     cfg = WrenConfig.load()
@@ -25,6 +28,34 @@ def main() -> None:
         print(f"Detected {ram} GB RAM → model {cfg.model}")
         if args.setup:
             return
+
+    if args.doctor:
+        from .ollama import doctor
+
+        print(doctor(cfg))
+        return
+
+    if args.install_ollama:
+        from .ollama import install_userspace, start, wait_up, pull_model
+
+        print("Installing Ollama into ~/.local …")
+        dest = install_userspace()
+        print(f"binary: {dest}")
+        start(cfg)
+        if wait_up(cfg, 12):
+            print(f"pulling {cfg.model} …")
+            print(pull_model(cfg))
+        else:
+            print("Ollama installed. Start it with: ollama serve")
+        return
+
+    if args.ensure_brain:
+        from .ollama import start, wait_up
+
+        print(start(cfg))
+        print("up" if wait_up(cfg) else "still-down")
+        return
+
     try:
         launch(cfg)
     except KeyboardInterrupt:

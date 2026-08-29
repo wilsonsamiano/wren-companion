@@ -41,9 +41,21 @@ def ask_ollama(cfg: WrenConfig, prompt: str, context: str) -> tuple[str, Propose
         )
         text = body.get("message", {}).get("content", "")
         return _parse(text)
+    except urllib.error.HTTPError:
+        return (
+            f"Ollama is up but {cfg.model} is not installed yet. Say Yes to pull it.",
+            ProposedAction(
+                title=f"Download {cfg.model}",
+                detail="Runs ollama pull. On the Surface Go 2 this is the 1B model, about 1.3 GB.",
+                risk="medium",
+                kind="command",
+                command=f"ollama pull {cfg.model}",
+                background=True,
+            ),
+        )
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
         return (
-            "Ollama is not reachable. Start it with `ollama serve` or switch to a hosted key in config.",
+            "Ollama is not reachable. I can start it if you say Yes.",
             None,
         )
 
@@ -54,7 +66,7 @@ def ask_grok(cfg: WrenConfig, prompt: str, context: str, *, allow_internet: bool
     body = _post_json(
         "https://api.x.ai/v1/chat/completions",
         {
-            "model": "grok-4.5",
+            "model": "grok-4-1-fast-non-reasoning",
             "max_tokens": 400,
             "messages": [
                 {"role": "system", "content": SYSTEM},

@@ -11,6 +11,7 @@ class ProposedAction:
     kind: str
     command: str = ""
     url: str = ""
+    background: bool = False
 
 
 def confirm(action: ProposedAction) -> bool:

@@ -24,13 +24,14 @@ def detect_ram_gb() -> int:
 
 
 def pick_model(ram_gb: int) -> str:
+    # Surface Go 2 class (~8 GB, often reported as 7) must stay on a 1B model.
     if ram_gb >= 48:
         return "qwen2.5:14b-instruct-q4_K_M"
     if ram_gb >= 16:
         return "llama3.1:8b-instruct-q4_K_M"
-    if ram_gb >= 8:
+    if ram_gb >= 10:
         return "phi3:mini"
-    return "llama3.2:1b-instruct-q4_K_M"
+    return "llama3.2:1b"
 
 
 @dataclass
