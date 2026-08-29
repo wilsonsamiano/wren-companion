@@ -31,7 +31,7 @@ chmod +x install.sh
 wren
 ```
 
-Already cloned? `git pull` then re-run `linux/install.sh`.
+Already cloned? `git pull`, then `linux/uninstall.sh` (drops the empty 0.1.0 overlay) and `linux/install.sh`.
 
 On Bazzite, if you only get a floating sentence and no bird, you are on 0.1.0. 0.1.1 ships the sprite, a readable bubble, and will start or install Ollama when you click Yes.
 

@@ -29,6 +29,7 @@ If you already cloned, update and reinstall:
 cd wren-companion
 git pull
 cd linux
+./uninstall.sh          # drop the empty 0.1.0 overlay
 ./install.sh
 wren
 ```
@@ -49,6 +50,15 @@ If you only see a tiny gray sentence on the wallpaper, you are on 0.1.0 — pull
 wren --doctor          # sprite / ollama / RAM
 wren --ensure-brain    # start ollama if it is down
 wren --install-ollama  # download the official binary into ~/.local
+```
+
+## Uninstall
+
+```bash
+cd wren-companion/linux
+./uninstall.sh                 # overlay + app menu
+./uninstall.sh --purge         # also config and the wren distrobox
+./uninstall.sh --with-ollama   # also the ~/.local Ollama binary
 ```
 
 ## Permissions
