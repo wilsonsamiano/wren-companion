@@ -1,6 +1,6 @@
 [project]
 name = "wren-companion"
-version = "0.1.5"
+version = "0.1.6"
 description = "Open-source Linux desktop companion — watches, points, and only acts when you say yes."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -19,4 +19,4 @@ build-backend = "setuptools.build_meta"
 include = ["wren*"]
 
 [tool.setuptools.package-data]
-wren = ["assets/*.png"]
+wren = ["assets/*.png", "gnome/**/*"]

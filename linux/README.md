@@ -50,7 +50,7 @@ The host is immutable. Wren runs **on the host** (GTK 4 is already there). Ollam
 
 Then search **Wren** in the app grid, or run `wren`.
 
-If you only see a tiny gray sentence on the wallpaper, you are on 0.1.0. Current is 0.1.5 — transparent bird, resizable, app icon, always-on-top, `wren --update`.
+If you only see a tiny gray sentence on the wallpaper, you are on 0.1.0. Current is 0.1.6 — transparent bird, resizable, dash icon, always-on-top on every workspace, `wren --update`.
 
 ```bash
 wren --doctor          # sprite / ollama / RAM

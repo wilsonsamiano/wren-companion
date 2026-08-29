@@ -1,0 +1,8 @@
+{
+  "name": "Wren Always On Top",
+  "description": "Keeps the Wren companion above other windows on every workspace.",
+  "uuid": "wren-top@dev.wren.companion",
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "session-modes": ["user"],
+  "url": "https://github.com/wilsonsamiano/wren-companion"
+}

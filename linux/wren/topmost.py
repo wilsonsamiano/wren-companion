@@ -1,42 +1,21 @@
-"""Keep Wren above other windows.
+"""Keep Wren above other windows and on every workspace.
 
-GNOME Wayland has no keep-above for regular apps. Prefer gtk4-layer-shell
-(overlay layer). If that library is missing, use X11 _NET_WM_STATE_ABOVE
-(XWayland), which Bazzite still provides.
+CachyOS/KDE: gtk4-layer-shell overlay.
+Bazzite/GNOME: a tiny user extension (make_above + stick). X11 hints
+are a fallback only when we are actually on XWayland.
 """
 
 from __future__ import annotations
 
 import ctypes
-import os
 import shutil
 import subprocess
-from ctypes import Structure, c_char_p, c_int, c_long, c_ulong, c_void_p
+from ctypes import Structure, byref, c_char_p, c_int, c_long, c_ulong, c_void_p
 from pathlib import Path
 
+from .assets import linux_root, pin_dash
 
-def layer_shell_typelib() -> bool:
-    names = (
-        "Gtk4LayerShell-1.0.typelib",
-        "GtkLayerShell-0.1.typelib",
-    )
-    roots = (
-        "/usr/lib64/girepository-1.0",
-        "/usr/lib/girepository-1.0",
-        "/usr/lib/x86_64-linux-gnu/girepository-1.0",
-    )
-    return any((Path(root) / name).is_file() for root in roots for name in names)
-
-
-def maybe_force_x11() -> None:
-    """Call before Gtk is imported. GNOME without layer-shell → XWayland."""
-    if os.environ.get("GDK_BACKEND"):
-        return
-    if layer_shell_typelib():
-        return
-    desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").upper()
-    if "GNOME" in desktop or "BUDGIE" in desktop:
-        os.environ["GDK_BACKEND"] = "x11"
+EXT_UUID = "wren-top@dev.wren.companion"
 
 
 def attach_layer_shell(win, cfg) -> bool:
@@ -57,6 +36,10 @@ def attach_layer_shell(win, cfg) -> bool:
         LayerShell.set_anchor(win, LayerShell.Edge.RIGHT, True)
         LayerShell.set_margin(win, LayerShell.Edge.RIGHT, int(getattr(cfg, "margin_right", 24)))
         LayerShell.set_margin(win, LayerShell.Edge.BOTTOM, int(getattr(cfg, "margin_bottom", 24)))
+        try:
+            LayerShell.set_monitor_disabled  # type: ignore[attr-defined]
+        except Exception:
+            pass
         win._layer_shell = LayerShell
         return True
     except Exception:
@@ -75,6 +58,32 @@ def move_layer(win, cfg, dx: float, dy: float, origin: tuple[int, int]) -> None:
     ls.set_margin(win, ls.Edge.BOTTOM, bottom)
 
 
+def install_gnome_helper(enabled: bool = True) -> None:
+    src = None
+    for candidate in (
+        linux_root() / "gnome" / EXT_UUID,
+        Path(__file__).resolve().parent / "gnome" / EXT_UUID,
+    ):
+        if (candidate / "extension.js").is_file():
+            src = candidate
+            break
+    if src is None:
+        return
+    dest = Path.home() / ".local/share/gnome-shell/extensions" / EXT_UUID
+    dest.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src / "extension.js", dest / "extension.js")
+    shutil.copy2(src / "metadata.json", dest / "metadata.json")
+    subprocess.run(
+        ["gsettings", "set", "org.gnome.shell", "disable-user-extensions", "false"],
+        capture_output=True,
+        check=False,
+    )
+    cmd = "enable" if enabled else "disable"
+    subprocess.run(["gnome-extensions", cmd, EXT_UUID], capture_output=True, check=False)
+    if enabled:
+        pin_dash()
+
+
 def x11_set_above(win) -> bool:
     try:
         import gi
@@ -84,23 +93,20 @@ def x11_set_above(win) -> bool:
     except (ValueError, ImportError):
         return False
     surface = win.get_surface()
-    if surface is None or not hasattr(GdkX11, "X11Surface"):
+    if surface is None:
         return False
     try:
         xid = GdkX11.X11Surface.get_xid(surface)
     except Exception:
         return False
-    if shutil.which("wmctrl"):
-        r = subprocess.run(
-            ["wmctrl", "-i", "-r", str(xid), "-b", "add,above"],
-            capture_output=True,
-        )
-        if r.returncode == 0:
-            return True
-    return _xsend_above(xid)
+    ok = False
+    for extra in (b"_NET_WM_STATE_ABOVE", b"_NET_WM_STATE_STICKY"):
+        ok = _xsend_state(xid, extra) or ok
+    _xset_type_dock(xid)
+    return ok
 
 
-def _xsend_above(xid: int) -> bool:
+def _xsend_state(xid: int, atom: bytes) -> bool:
     class XClientMessageEvent(Structure):
         _fields_ = [
             ("type", c_int),
@@ -125,7 +131,7 @@ def _xsend_above(xid: int) -> bool:
     lib.XInternAtom.restype = c_ulong
     lib.XInternAtom.argtypes = [c_void_p, c_char_p, c_int]
     state = lib.XInternAtom(dpy, b"_NET_WM_STATE", 0)
-    above = lib.XInternAtom(dpy, b"_NET_WM_STATE_ABOVE", 0)
+    value = lib.XInternAtom(dpy, atom, 0)
     root = lib.XDefaultRootWindow(dpy)
     event = XClientMessageEvent()
     event.type = 33
@@ -133,12 +139,34 @@ def _xsend_above(xid: int) -> bool:
     event.message_type = state
     event.format = 32
     event.data[0] = 1
-    event.data[1] = above
+    event.data[1] = value
     event.data[2] = 0
     event.data[3] = 1
     event.data[4] = 0
     mask = (1 << 19) | (1 << 20)
-    lib.XSendEvent(dpy, root, 0, mask, ctypes.byref(event))
+    lib.XSendEvent(dpy, root, 0, mask, byref(event))
     lib.XFlush(dpy)
     lib.XCloseDisplay(dpy)
     return True
+
+
+def _xset_type_dock(xid: int) -> None:
+    try:
+        lib = ctypes.CDLL("libX11.so.6")
+    except OSError:
+        return
+    lib.XOpenDisplay.restype = c_void_p
+    lib.XOpenDisplay.argtypes = [c_char_p]
+    dpy = lib.XOpenDisplay(None)
+    if not dpy:
+        return
+    lib.XInternAtom.restype = c_ulong
+    lib.XInternAtom.argtypes = [c_void_p, c_char_p, c_int]
+    prop = lib.XInternAtom(dpy, b"_NET_WM_WINDOW_TYPE", 0)
+    dock = lib.XInternAtom(dpy, b"_NET_WM_WINDOW_TYPE_UTILITY", 0)
+    atom_t = c_ulong
+    val = atom_t(dock)
+    XA_ATOM = 4
+    lib.XChangeProperty(dpy, xid, prop, XA_ATOM, 32, 0, byref(val), 1)
+    lib.XFlush(dpy)
+    lib.XCloseDisplay(dpy)

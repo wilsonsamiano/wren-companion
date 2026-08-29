@@ -59,12 +59,14 @@ python3 - <<PY
 from pathlib import Path
 from wren.config import WrenConfig
 from wren.assets import sync_assets, write_desktop
+from wren.topmost import install_gnome_helper
 cfg = WrenConfig.load()
 cfg.source_dir = r"$ROOT"
 cfg.save()
 sync_assets(Path(r"$ROOT"))
 write_desktop()
-print("icons + desktop refreshed")
+install_gnome_helper(cfg.always_on_top)
+print("icons + desktop + GNOME helper refreshed")
 PY
 
 if [[ "$SKIP_OLLAMA" -eq 0 ]]; then
@@ -90,7 +92,7 @@ fi
 echo
 echo "Launch with:  wren     (or search Wren in the app grid)"
 echo "Update with:  wren --update"
-echo "Version:      wren --version    (must print 0.1.5)"
+echo "Version:      wren --version    (must print 0.1.6)"
 echo "Status:       wren --doctor"
 echo "Config:       ~/.config/wren/config.json"
 echo "Wren will not click, type, or go online unless you allow it."

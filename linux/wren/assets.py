@@ -78,6 +78,7 @@ def write_desktop() -> Path:
                 "Type=Application",
                 "StartupWMClass=dev.wren.companion",
                 "StartupNotify=true",
+                "Keywords=clippy;bird;assistant;pet;wren;",
                 "Categories=Utility;",
                 "X-GNOME-UsesNotifications=true",
                 "",
@@ -87,7 +88,34 @@ def write_desktop() -> Path:
     )
     subprocess.run(["update-desktop-database", str(APPS)], capture_output=True, check=False)
     subprocess.run(["xdg-desktop-menu", "forceupdate"], capture_output=True, check=False)
+    pin_dash()
     return path
+
+
+def pin_dash() -> None:
+    desktop = f"{ICON_NAME}.desktop"
+    r = subprocess.run(
+        ["gsettings", "get", "org.gnome.shell", "favorite-apps"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if r.returncode != 0:
+        return
+    raw = r.stdout.strip()
+    if desktop in raw:
+        return
+    if raw in ("@as []", "[]", ""):
+        new = f"['{desktop}']"
+    elif raw.endswith("]"):
+        new = raw[:-1] + f", '{desktop}']"
+    else:
+        return
+    subprocess.run(
+        ["gsettings", "set", "org.gnome.shell", "favorite-apps", new],
+        capture_output=True,
+        check=False,
+    )
 
 
 def sync_assets(root: Path | None = None) -> Path | None:

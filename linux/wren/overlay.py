@@ -12,7 +12,7 @@ from .config import WrenConfig
 from .ollama import binary as ollama_binary
 from .ollama import ping as ollama_ping
 from .permissions import ProposedAction
-from .topmost import attach_layer_shell, maybe_force_x11, move_layer, x11_set_above
+from .topmost import attach_layer_shell, install_gnome_helper, move_layer, x11_set_above
 from .watch import active_window_title
 
 # Old Intel (Surface Go 2 HD 615) hangs on GTK4's ngl renderer.
@@ -22,7 +22,8 @@ CSS = b"""
 window.wren-window,
 window.wren-window.background,
 window.wren-window.csd,
-window.wren-window.solid-csd {
+window.wren-window.solid-csd,
+window.wren-window.undecorated {
   background-color: transparent;
   background-image: none;
   border: none;
@@ -31,14 +32,17 @@ window.wren-window.solid-csd {
 }
 window.wren-window decoration,
 window.wren-window headerbar,
+window.wren-window .titlebar,
+window.wren-window windowcontrols,
 .wren-grip, .wren-grip > box {
   background-color: transparent;
   background-image: none;
   box-shadow: none;
   border: none;
-  min-height: 8px;
+  min-height: 0;
   padding: 0;
   margin: 0;
+  opacity: 0;
 }
 .wren-root, windowhandle, picture {
   background-color: transparent;
@@ -86,8 +90,7 @@ def _fallback_pixbuf(GdkPixbuf, size: int):
 
 
 def launch(cfg: WrenConfig) -> None:
-    if cfg.always_on_top:
-        maybe_force_x11()
+    install_gnome_helper(cfg.always_on_top)
     Gtk, Gdk, GdkPixbuf, GLib, Gio = _load_gi()
 
     def ui(fn, *args):
@@ -104,8 +107,10 @@ def launch(cfg: WrenConfig) -> None:
         def __init__(self, app: Gtk.Application) -> None:
             super().__init__(application=app, title="Wren")
             self.set_css_classes(["wren-window"])
-            self.set_decorated(True)
+            self.set_decorated(False)
             self.set_resizable(True)
+            self.set_deletable(False)
+            self.set_titlebar(None)
             self.set_icon_name(ICON_NAME)
             self._busy = False
             self._did_drag = False
@@ -123,14 +128,6 @@ def launch(cfg: WrenConfig) -> None:
                 css,
                 Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 10,
             )
-
-            # Invisible CSD grip so GNOME will still let us drag / resize.
-            grip = Gtk.WindowHandle()
-            grip.add_css_class("wren-grip")
-            strip = Gtk.Box()
-            strip.set_size_request(-1, 8)
-            grip.set_child(strip)
-            self.set_titlebar(grip)
 
             root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
             root.add_css_class("wren-root")
@@ -204,11 +201,7 @@ def launch(cfg: WrenConfig) -> None:
                 GLib.timeout_add_seconds(max(16, int(cfg.watch_seconds)), self.on_watch)
 
             if cfg.always_on_top:
-                self.set_decorated(False)
-                self.set_titlebar(None)
                 self._layer = attach_layer_shell(self, cfg)
-                if not self._layer:
-                    self.set_decorated(True)
 
             GLib.timeout_add(200, self.boot_brain)
             GLib.timeout_add(700, self._first_pin)
@@ -478,11 +471,12 @@ def launch(cfg: WrenConfig) -> None:
         def toggle_top(self) -> None:
             cfg.always_on_top = not cfg.always_on_top
             cfg.save()
+            install_gnome_helper(cfg.always_on_top)
             if cfg.always_on_top:
                 self.pin_above()
-                self.say("I'll stay on top. Restart me if I still slip behind.")
+                self.say("I'll stay on every screen. Log out once if I still slip behind.")
             else:
-                self.say("I won't stay on top. Restart me to apply.")
+                self.say("I won't stay on top.")
 
         def on_watch(self) -> bool:
             if not cfg.permissions.watch or self._busy:

@@ -43,13 +43,13 @@ wren
 
 After that, later versions are just `wren --update`.
 
-On Bazzite, if you only get a floating sentence and no bird, you are on 0.1.0. 0.1.5 is a small transparent bird, resizable, always-on-top, with an app icon.
+On Bazzite, if you only get a floating sentence and no bird, you are on 0.1.0. 0.1.6 is a small transparent bird, resizable, always-on-top on every workspace, with an app icon.
 
 Details: [linux/README.md](linux/README.md).
 
 ## Status
 
-v0.1.5 — playground + GTK overlay + Ollama brain + gated actions. Help wanted: Hyprland window titles, Piper voices, a quieter watch heuristic.
+v0.1.6 — playground + GTK overlay + Ollama brain + gated actions. Help wanted: Hyprland window titles, Piper voices, a quieter watch heuristic.
 
 ## License
 
