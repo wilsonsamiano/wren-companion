@@ -104,7 +104,7 @@ fi
 echo
 echo "Launch with:  wren     (or search Wren in the app grid)"
 echo "Update with:  wren --update"
-echo "Version:      wren --version    (must print 0.1.13)"
+echo "Version:      wren --version    (must print 0.1.14)"
 echo "Status:       wren --doctor"
 echo "Config:       ~/.config/wren/config.json"
 echo "Wren will not click, type, or go online unless you allow it."

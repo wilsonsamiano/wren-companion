@@ -292,12 +292,12 @@ def launch(cfg: WrenConfig) -> None:
             chat.append(self.perm_box)
 
             self.msg_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-            scroll = Gtk.ScrolledWindow()
-            scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-            scroll.set_min_content_height(140)
-            scroll.set_vexpand(True)
-            scroll.set_child(self.msg_box)
-            chat.append(scroll)
+            self.msg_scroll = Gtk.ScrolledWindow()
+            self.msg_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+            self.msg_scroll.set_min_content_height(140)
+            self.msg_scroll.set_vexpand(True)
+            self.msg_scroll.set_child(self.msg_box)
+            chat.append(self.msg_scroll)
             self._hints = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
             for hint in (
                 "What am I doing?",
@@ -498,6 +498,18 @@ def launch(cfg: WrenConfig) -> None:
             self._set_text(lab, text)
             self.msg_box.append(lab)
             self._messages.append((role, text))
+            self._scroll_chat()
+
+        def _scroll_chat(self) -> None:
+            adj = self.msg_scroll.get_vadjustment()
+
+            def go() -> bool:
+                adj.set_value(max(0.0, adj.get_upper() - adj.get_page_size()))
+                return False
+
+            GLib.idle_add(go)
+            GLib.timeout_add(40, go)
+            GLib.timeout_add(120, go)
 
         def send_text(self, text: str | None = None) -> None:
             msg = (text if text is not None else self.entry.get_text()).strip()
