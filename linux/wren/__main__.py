@@ -17,6 +17,7 @@ def main() -> None:
     parser.add_argument("--ensure-brain", action="store_true", help="start Ollama if it is down")
     parser.add_argument("--update", action="store_true", help="git pull + reinstall in place (no uninstall)")
     parser.add_argument("--repair", action="store_true", help="fix broken app icons caused by an old Wren install")
+    parser.add_argument("--install-voice", action="store_true", help="install vosk + small English model for listening")
     args = parser.parse_args()
 
     if args.version:
@@ -42,6 +43,14 @@ def main() -> None:
         print("If they are still gears, log out once.")
         return
 
+    if args.install_voice:
+        from .voice import install_voice, status
+
+        print("Installing vosk + small English model into ~/.local …")
+        print(install_voice())
+        print(status())
+        return
+
     cfg = WrenConfig.load()
     ram = detect_ram_gb()
     if args.model:
@@ -57,8 +66,10 @@ def main() -> None:
 
     if args.doctor:
         from .ollama import doctor
+        from .voice import status as voice_status
 
         print(doctor(cfg))
+        print(voice_status())
         return
 
     if args.install_ollama:

@@ -13,6 +13,7 @@ from .ollama import binary as ollama_binary
 from .ollama import ping as ollama_ping
 from .permissions import ProposedAction
 from .topmost import attach_layer_shell, install_gnome_helper, move_layer, x11_set_above
+from .voice import can_listen, can_speak, is_affirm, is_deny, listen, speak
 from .watch import active_window_title
 
 # Old Intel (Surface Go 2 HD 615) hangs on GTK4's ngl renderer.
@@ -309,12 +310,14 @@ def launch(cfg: WrenConfig) -> None:
 
             row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
             look = self._btn(Gtk, "Look", self.ask_user)
+            mic = self._btn(Gtk, "Mic", self.on_mic)
             self.entry = Gtk.Entry()
             self.entry.set_placeholder_text("Ask Wren…")
             self.entry.set_hexpand(True)
             self.entry.connect("activate", lambda *_: self.send_text())
             send = self._btn(Gtk, "Send", self.send_text)
             row.append(look)
+            row.append(mic)
             row.append(self.entry)
             row.append(send)
             chat.append(row)
@@ -452,6 +455,39 @@ def launch(cfg: WrenConfig) -> None:
         def close_chat(self) -> None:
             self.chat_pop.popdown()
 
+        def on_mic(self) -> None:
+            if self._busy or getattr(self, "_listening", False):
+                return
+            cfg.permissions.voice = True
+            cfg.save()
+            if not can_listen():
+                self.say("I can talk after we install a listener.")
+                self.prompt_action(
+                    ProposedAction(
+                        title="Install offline voice",
+                        detail="Installs vosk into your user Python and downloads a 40 MB English model to ~/.local/share/wren. No sudo. Needs the network once.",
+                        risk="medium",
+                        kind="command",
+                        command="wren --install-voice",
+                        background=False,
+                    )
+                )
+                return
+            self._listening = True
+            self.say("Listening…")
+
+            def work():
+                return listen(5)
+
+            def done(text) -> None:
+                self._listening = False
+                if not text or isinstance(text, Exception):
+                    self.say("I didn't catch that.")
+                    return
+                self.send_text(str(text))
+
+            self._bg(work, done)
+
         def add_message(self, role: str, text: str) -> None:
             if self._hints.get_parent() is self.msg_box:
                 self.msg_box.remove(self._hints)
@@ -465,9 +501,19 @@ def launch(cfg: WrenConfig) -> None:
 
         def send_text(self, text: str | None = None) -> None:
             msg = (text if text is not None else self.entry.get_text()).strip()
-            if not msg or self._busy:
+            if not msg:
                 return
             self.entry.set_text("")
+            if self._pending:
+                self.add_message("user", msg)
+                if is_affirm(msg):
+                    self._answer_perm(True)
+                    return
+                if is_deny(msg):
+                    self._answer_perm(False)
+                    return
+            if self._busy:
+                return
             self.add_message("user", msg)
             self.ask_user(msg)
 
@@ -476,6 +522,8 @@ def launch(cfg: WrenConfig) -> None:
                 self.set_pose("talk")
             self._set_text(self.bubble, text)
             self.speech_pop.popup()
+            if cfg.permissions.voice and text not in {"Looking…", "Listening…", "Updating…"}:
+                self._bg(lambda t=text: speak(t) or True, lambda *_: None)
             if self._hide_id:
                 GLib.source_remove(self._hide_id)
                 self._hide_id = 0
@@ -665,6 +713,10 @@ def launch(cfg: WrenConfig) -> None:
                     "Watch on" if not cfg.permissions.watch else "Watch off",
                     self.toggle_watch,
                 ),
+                (
+                    "Voice off" if cfg.permissions.voice else "Voice on",
+                    self.toggle_voice,
+                ),
                 ("Update Wren", self.run_update),
                 ("Quit Wren", lambda: self.get_application().quit()),
             ]
@@ -695,6 +747,23 @@ def launch(cfg: WrenConfig) -> None:
             cfg.permissions.watch = not cfg.permissions.watch
             cfg.save()
             self.say("Watching on." if cfg.permissions.watch else "Watching off.")
+
+        def toggle_voice(self) -> None:
+            cfg.permissions.voice = not cfg.permissions.voice
+            cfg.save()
+            if not cfg.permissions.voice:
+                self.say("Voice off.")
+                return
+            bits = []
+            if can_speak():
+                bits.append("I can speak")
+            else:
+                bits.append("no speaker (install espeak-ng)")
+            if can_listen():
+                bits.append("I can listen")
+            else:
+                bits.append("tap Mic to install listening")
+            self.say("Voice on. " + "; ".join(bits) + ".")
 
         def toggle_top(self) -> None:
             cfg.always_on_top = not cfg.always_on_top

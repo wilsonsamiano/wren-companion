@@ -50,7 +50,7 @@ The host is immutable. Wren runs **on the host** (GTK 4 is already there). Ollam
 
 Then search **Wren** in the app grid, or run `wren`.
 
-If you only see a tiny gray sentence on the wallpaper, you are on 0.1.0. Current is 0.1.11 — wing-flap talk, dark bubble with white text.
+If you only see a tiny gray sentence on the wallpaper, you are on 0.1.0. Current is 0.1.13 — tap Mic to listen, Voice on to speak. Offline: espeak/spd-say + vosk.
 
 ```bash
 wren --doctor          # sprite / ollama / RAM
