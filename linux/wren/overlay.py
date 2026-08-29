@@ -129,31 +129,38 @@ def launch(cfg: WrenConfig) -> None:
                 Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 10,
             )
 
-            root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            root = Gtk.Overlay()
             root.add_css_class("wren-root")
             handle = Gtk.WindowHandle()
             handle.set_child(root)
             self.set_child(handle)
 
+            self.picture = Gtk.Picture()
+            self.picture.set_can_shrink(False)
+            self.picture.set_keep_aspect_ratio(True)
+            self.picture.set_halign(Gtk.Align.CENTER)
+            self.picture.set_valign(Gtk.Align.CENTER)
+            root.set_child(self.picture)
+
             self.bubble = Gtk.Label(
                 label="",
                 wrap=True,
                 justify=Gtk.Justification.CENTER,
-                max_width_chars=22,
+                max_width_chars=18,
             )
             self.bubble.add_css_class("wren-bubble")
             self.bubble.set_halign(Gtk.Align.CENTER)
+            self.bubble.set_valign(Gtk.Align.START)
+            self.bubble.set_margin_top(4)
             self.bubble.set_visible(False)
-            root.append(self.bubble)
+            root.add_overlay(self.bubble)
 
-            self.picture = Gtk.Picture()
-            self.picture.set_can_shrink(True)
-            self.picture.set_halign(Gtk.Align.CENTER)
-            self.picture.set_valign(Gtk.Align.CENTER)
             self._pose = "idle"
             self._frame_i = 0
             self._bob = 0
             self._bob_dir = 1
+            self._anim_id = 0
+            self._bob_id = 0
             self._poses: dict = {}
             for pose in ("idle", "think", "point", "talk"):
                 pixs = []
@@ -174,7 +181,6 @@ def launch(cfg: WrenConfig) -> None:
                 except Exception:
                     self._poses["idle"] = [_fallback_pixbuf(GdkPixbuf, 128)]
             self._src_pix = self._poses["idle"][0]
-            root.append(self.picture)
             self.apply_size()
 
             drag = Gtk.GestureDrag()
@@ -221,15 +227,33 @@ def launch(cfg: WrenConfig) -> None:
 
             GLib.timeout_add(200, self.boot_brain)
             GLib.timeout_add(700, self._first_pin)
-            GLib.timeout_add(380, self.tick_anim)
-            GLib.timeout_add(80, self.tick_bob)
 
         def set_pose(self, pose: str) -> None:
             if pose not in self._poses:
                 pose = "idle"
             self._pose = pose
             self._frame_i = 0
+            if pose == "idle":
+                self._stop_anim()
+                self._bob = 0
+                self.picture.set_margin_bottom(0)
+            else:
+                self._start_anim()
             self._show_frame()
+
+        def _start_anim(self) -> None:
+            if not self._anim_id:
+                self._anim_id = GLib.timeout_add(220, self.tick_anim)
+            if not self._bob_id:
+                self._bob_id = GLib.timeout_add(80, self.tick_bob)
+
+        def _stop_anim(self) -> None:
+            if self._anim_id:
+                GLib.source_remove(self._anim_id)
+                self._anim_id = 0
+            if self._bob_id:
+                GLib.source_remove(self._bob_id)
+                self._bob_id = 0
 
         def _show_frame(self) -> None:
             frames = self._poses.get(self._pose) or self._poses["idle"]
@@ -239,14 +263,22 @@ def launch(cfg: WrenConfig) -> None:
             self.picture.set_paintable(Gdk.Texture.new_for_pixbuf(scaled))
 
         def tick_anim(self) -> bool:
+            if self._pose == "idle":
+                self._anim_id = 0
+                return False
             frames = self._poses.get(self._pose) or self._poses["idle"]
             self._frame_i = (self._frame_i + 1) % len(frames)
             self._show_frame()
             return True
 
         def tick_bob(self) -> bool:
+            if self._pose == "idle":
+                self._bob = 0
+                self.picture.set_margin_bottom(0)
+                self._bob_id = 0
+                return False
             self._bob += self._bob_dir
-            if self._bob >= 5:
+            if self._bob >= 4:
                 self._bob_dir = -1
             elif self._bob <= 0:
                 self._bob_dir = 1
@@ -258,11 +290,8 @@ def launch(cfg: WrenConfig) -> None:
             size = max(MIN_PET, min(MAX_PET, int(cfg.pet_size)))
             cfg.pet_size = size
             self.picture.set_size_request(size, size)
-            if self._src_pix is not None:
-                scaled = self._src_pix.scale_simple(size, size, GdkPixbuf.InterpType.BILINEAR)
-                self.picture.set_paintable(Gdk.Texture.new_for_pixbuf(scaled))
-            extra_h = 52 if self.bubble.get_visible() else 12
-            self.set_default_size(size + 12, size + extra_h)
+            self._show_frame()
+            self.set_default_size(size, size)
             self._applying = False
 
         def bump_size(self, delta: int) -> None:
@@ -290,7 +319,7 @@ def launch(cfg: WrenConfig) -> None:
             w, h = self.get_width(), self.get_height()
             if w < 40 or h < 40:
                 return
-            size = min(w, h) - (48 if self.bubble.get_visible() else 12)
+            size = min(w, h)
             size = max(MIN_PET, min(MAX_PET, size))
             if abs(size - cfg.pet_size) < 8:
                 return
@@ -298,11 +327,11 @@ def launch(cfg: WrenConfig) -> None:
             cfg.save()
             self.apply_size()
 
-        def say(self, text: str) -> None:
-            self.set_pose("talk")
+        def say(self, text: str, *, animate: bool = False) -> None:
+            if animate:
+                self.set_pose("talk")
             self.bubble.set_text(text)
             self.bubble.set_visible(True)
-            self.apply_size()
             if self._hide_id:
                 GLib.source_remove(self._hide_id)
                 self._hide_id = 0
@@ -311,7 +340,6 @@ def launch(cfg: WrenConfig) -> None:
         def _hide_bubble(self) -> bool:
             self.bubble.set_visible(False)
             self.set_pose("idle")
-            self.apply_size()
             self._hide_id = 0
             return False
 
@@ -417,7 +445,7 @@ def launch(cfg: WrenConfig) -> None:
                 return
             self._busy = True
             self.set_pose("think")
-            self.say("Looking…")
+            self.say("Looking…", animate=True)
 
             def work():
                 if not ollama_ping(cfg):
@@ -465,7 +493,7 @@ def launch(cfg: WrenConfig) -> None:
                     )
                     return
                 _, speech, action = result
-                self.say(speech or "I'm here.")
+                self.say(speech or "I'm here.", animate=True)
                 if action and cfg.permissions.actions:
                     self.prompt_action(action)
 

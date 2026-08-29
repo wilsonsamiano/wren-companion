@@ -49,7 +49,7 @@ Details: [linux/README.md](linux/README.md).
 
 ## Status
 
-v0.1.7 — playground + GTK overlay + Ollama brain + gated actions. Help wanted: Hyprland window titles, Piper voices, a quieter watch heuristic.
+v0.1.8 — playground + GTK overlay + Ollama brain + gated actions. Help wanted: Hyprland window titles, Piper voices, a quieter watch heuristic.
 
 ## License
 
